@@ -8,6 +8,7 @@ dependencies = [
     "flax>=0.12.7",
     "jax[cuda13]>=0.10.0",
     "optax>=0.2.8",
+    "tensorflow-cpu>=2.21.0",
 ]
 
 [build-system]
