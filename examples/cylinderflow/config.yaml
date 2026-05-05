@@ -1,0 +1,7 @@
+dataset:
+  name: cylinderflow
+  dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_deepmind/cylinder_flow/
+  meta: meta.json
+  train: train.tfrecord
+  valid: valid.tfrecord
+  test: test.tfrecord
