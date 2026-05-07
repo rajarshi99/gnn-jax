@@ -20,6 +20,33 @@ class NodeType(enum.IntEnum):
     WALL_BOUNDARY = 6
     SIZE = 9
 
+def cells_to_bi_edges(cells: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build unique bidirectional edges from triangle cells
+
+    cells: shape (C, 3) int32
+    returns senders, receivers: shape (E,) int32
+    """
+    a = cells[:, 0]
+    b = cells[:, 1]
+    c = cells[:, 2]
+
+    e1 = np.stack([a, b], axis=1)
+    e2 = np.stack([b, c], axis=1)
+    e3 = np.stack([c, a], axis=1)
+    edges = np.concatenate([e1, e2, e3], axis=0)      # (3C,2)
+
+    rev = edges[:, ::-1]
+    edges = np.concatenate([edges, rev], axis=0)      # (6C,2)
+
+    # unique undirected+directed edges
+    edges = np.unique(edges, axis=0)                  # (E,2)
+
+    senders = edges[:, 0].astype(np.int32)
+    receivers = edges[:, 1].astype(np.int32)
+    return senders, receivers
+
+
 def trajectory_iterator_np(tfrecord_path, meta_path):
     """
     Lazily stream and decode DeepMind CylinderFlow
@@ -74,5 +101,9 @@ def trajectory_iterator_np(tfrecord_path, meta_path):
             arr = flat.reshape(shape)
 
             decoded[k] = arr
+
+        senders, receivers = cells_to_bi_edges(decoded["cells"][0])
+        decoded["senders"] = senders
+        decoded["receivers"] = receivers
 
         yield decoded

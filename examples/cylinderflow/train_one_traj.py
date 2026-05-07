@@ -19,35 +19,59 @@ from flax.training import train_state
 
 from gnn_jax.data.deepmind_cylinderflow import trajectory_iterator_np, NodeType
 from gnn_jax.mlp import MLP
-from gnn_jax.gnn_block import GNBlock, MeshGraphNet
+from gnn_jax.gnn_block import GNN
 
-
-def cells_to_bi_edges_jax(cells: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+class NodeUpdate(nn.Module):
     """
-    Build unique bidirectional edges from triangle cells
-
-    cells: shape (C, 3) int32
-    returns senders, receivers: shape (E,) int32
+    Inputs
+        -Node embeddings/feats
+        -Aggregated messages
+    Returns: Updated Node Embeddings with residual connection
     """
-    a = cells[:, 0]
-    b = cells[:, 1]
-    c = cells[:, 2]
+    latent_dim: int
+    num_hidden_layers: int
 
-    e1 = jnp.stack([a, b], axis=1)
-    e2 = jnp.stack([b, c], axis=1)
-    e3 = jnp.stack([c, a], axis=1)
-    edges = jnp.concatenate([e1, e2, e3], axis=0)      # (3C,2)
+    @nn.compact
+    def __call__(self, h, agg):
+        x = jnp.concatenate([h, agg], axis=-1)
+        dh = MLP(
+            [self.latent_dim]*self.num_hidden_layers + [h.shape[-1]],
+            # [nn.relu]*(self.num_hidden_layers + 1)
+            [nn.relu]*(self.num_hidden_layers)
+        )(x)
+        return h + dh # Residual connection
 
-    rev = edges[:, ::-1]
-    edges = jnp.concatenate([edges, rev], axis=0)      # (6C,2)
+class MeshGraphNet(nn.Module):
+    latent_dim: int = 128
+    message_passing_steps: int = 8
+    node_type_dim: int = 9   # NORMAL..WALL_BOUNDARY
+    edge_feat_dim: int = 3   # dx, dy, dist
 
-    # unique undirected+directed edges
-    edges = jnp.unique(edges, axis=0)                  # (E,2)
+    @nn.compact
+    def __call__(self, node_in, edge_in, senders, receivers):
+        # node_enc = MLP([self.latent_dim]*2, [nn.relu]*2, name="node_enc")
+        # edge_enc = MLP([self.latent_dim]*2, [nn.relu]*2, name="edge_enc")
+        node_enc = MLP([self.latent_dim]*2, [nn.relu]*1, name="node_enc")
+        edge_enc = MLP([self.latent_dim]*2, [nn.relu]*1, name="edge_enc")
 
-    senders = edges[:, 0].astype(jnp.int32)
-    receivers = edges[:, 1].astype(jnp.int32)
-    return senders, receivers
+        h = node_enc(node_in)
+        e = edge_enc(edge_in)
 
+        for k in range(self.message_passing_steps):
+            # msg_mlp = MLP([self.latent_dim]*2, [nn.relu]*2, name=f"msg_{k}")
+            msg_mlp = MLP([self.latent_dim]*2, [nn.relu]*1, name=f"msg_{k}")
+            h, e = GNN(msg=msg_mlp,
+                    node_update=NodeUpdate(
+                        latent_dim=self.latent_dim,
+                        num_hidden_layers=1,
+                        name=f"node_{k}"),
+                    edge_update=lambda e, m: e + m, # Residual connection
+                    name=f"gn_{k}")(h, e, senders, receivers)
+
+        # decoder outputs delta_v (dvx, dvy)
+        dec = MLP([self.latent_dim]*1 + [2], [nn.relu]*1, name="dec")
+        delta_v = dec(h)
+        return delta_v
 
 # -------------------------
 # Training utilities
@@ -111,14 +135,12 @@ def main():
     # Convert required arrays to JAX once
     mesh_pos = jnp.asarray(traj["mesh_pos"][0], dtype=jnp.float32)       # (N,2)
     node_type = jnp.asarray(traj["node_type"][0, :, 0], dtype=jnp.int32) # (N,)
-    cells = jnp.asarray(traj["cells"][0], dtype=jnp.int32)               # (C,3)
     vel = jnp.asarray(traj["velocity"], dtype=jnp.float32)               # (T,N,2)
+    senders = jnp.asarray(traj["senders"], dtype=jnp.int32)              # (E,)
+    receivers = jnp.asarray(traj["receivers"], dtype=jnp.int32)          # (E,)
 
     N = mesh_pos.shape[0]
     T = vel.shape[0]
-
-    # --- Build senders/receivers ---
-    senders, receivers = cells_to_bi_edges_jax(cells)
 
     # --- Edge features: dx, dy, dist ---
     rel = mesh_pos[receivers] - mesh_pos[senders]                         # (E,2)
