@@ -24,7 +24,13 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(self, x:jnp.ndarray):
-        for act, lsize in zip(self.activations, self.layer_sizes):
+        diff_in_lens = len(self.layer_sizes) - len(self.activations)
+        if diff_in_lens > 0:
+            activations = self.activations + (jax.nn.identity,)*diff_in_lens
+        else:
+            activations = self.activations
+
+        for act, lsize in zip(activations, self.layer_sizes):
             x = act(nn.Dense(features=lsize)(x))
 
         return x
