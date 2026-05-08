@@ -95,8 +95,7 @@ def trajectory_iterator_np(tfrecord_path, meta_path):
                 else:
                     known *= s
             if uknown_id == None:
-                print("No -1 placeholder for number of nodes found", k, shape)
-                exit()
+                raise ValueError("No -1 placeholder for number of nodes found")
             shape[uknown_id] = flat.size // known
             arr = flat.reshape(shape)
 
