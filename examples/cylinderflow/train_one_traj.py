@@ -19,7 +19,7 @@ from flax.training import train_state
 
 from gnn_jax.data.deepmind_cylinderflow import trajectory_iterator_np, NodeType
 from gnn_jax.mlp import MLP
-from gnn_jax.gnn_block import GNN
+from gnn_jax.gnn_layer import GNNLayer
 
 class NodeUpdate(nn.Module):
     """
@@ -60,7 +60,7 @@ class MeshGraphNet(nn.Module):
         for k in range(self.message_passing_steps):
             # msg_mlp = MLP([self.latent_dim]*2, [nn.relu]*2, name=f"msg_{k}")
             msg_mlp = MLP([self.latent_dim]*2, [nn.relu]*1, name=f"msg_{k}")
-            h, e = GNN(msg=msg_mlp,
+            h, e = GNNLayer(msg=msg_mlp,
                     node_update=NodeUpdate(
                         latent_dim=self.latent_dim,
                         num_hidden_layers=1,

@@ -6,7 +6,7 @@ from gnn_jax.mlp import MLP
 
 from typing import Sequence, Callable
 
-class GNN(nn.Module):
+class GNNLayer(nn.Module):
     msg: Callable
     node_update: Callable
     edge_update: Callable
