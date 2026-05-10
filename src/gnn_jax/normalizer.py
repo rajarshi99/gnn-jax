@@ -11,7 +11,6 @@ class Normalizer(nn.Module):
 
     feature_dim: int
     eps: float = 1e-8
-    max_accumulations: int = 1_000_000
 
     def setup(self):
         self.count = self.variable(
@@ -48,29 +47,20 @@ class Normalizer(nn.Module):
             raise ValueError("Feature dimension mismatch")
 
         # flatten all leading dims
-        x_flat = x.reshape(-1, self.feature_dim)
-
-        n = x_flat.shape[0]
-
-        # stop accumulating if max reached
-        remaining = jnp.maximum(self.max_accumulations - self.count.value, 0)
-        n_batch = jnp.minimum(n, remaining)
-        # Not possible inside JIT x_batch = x_flat[:n_batch]
-        mask = (jnp.arange(n) < n_batch)
-        x_batch_padded = x_flat * mask[:,None]
+        x_batch = x.reshape(-1, self.feature_dim)
+        n_batch = x_batch.shape[0]
 
         # Calculate new count
         count_new = self.count.value + n_batch
-        # assert count_new > 0
 
         # Calculate new mean
-        mean_batch = jnp.sum(x_batch_padded, axis=0) / n_batch
+        mean_batch = jnp.mean(x_batch, axis=0)
         delta = mean_batch - self.mean.value
         mean_new = self.mean.value + delta*n_batch/count_new
 
         # Calculate new M2
-        diff_padded = x_batch_padded - mean_batch
-        M2_batch = jnp.sum(diff_padded*diff_padded, axis=0)
+        diff = x_batch - mean_batch
+        M2_batch = jnp.sum(diff*diff, axis=0)
         M2_new = self.M2.value + M2_batch + delta*delta * self.count.value*n_batch/count_new
 
         # Calculate new std
@@ -81,8 +71,6 @@ class Normalizer(nn.Module):
         self.mean.value = mean_new
         self.M2.value = M2_new
         self.std.value = std_new
-
-        return n_batch
 
     # ------------------------------------------------------------------
     # transforms
