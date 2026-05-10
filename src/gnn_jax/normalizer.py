@@ -55,20 +55,22 @@ class Normalizer(nn.Module):
         # stop accumulating if max reached
         remaining = jnp.maximum(self.max_accumulations - self.count.value, 0)
         n_batch = jnp.minimum(n, remaining)
-        x_batch = x_flat[:n_batch]
+        # Not possible inside JIT x_batch = x_flat[:n_batch]
+        mask = (jnp.arange(n) < n_batch)
+        x_batch_padded = x_flat * mask[:,None]
 
         # Calculate new count
         count_new = self.count.value + n_batch
-        assert count_new > 0
+        # assert count_new > 0
 
         # Calculate new mean
-        mean_batch = jnp.mean(x_batch, axis=0)
+        mean_batch = jnp.sum(x_batch_padded, axis=0) / n_batch
         delta = mean_batch - self.mean.value
         mean_new = self.mean.value + delta*n_batch/count_new
 
         # Calculate new M2
-        diff = x_batch - mean_batch
-        M2_batch = jnp.sum(diff*diff, axis=0)
+        diff_padded = x_batch_padded - mean_batch
+        M2_batch = jnp.sum(diff_padded*diff_padded, axis=0)
         M2_new = self.M2.value + M2_batch + delta*delta * self.count.value*n_batch/count_new
 
         # Calculate new std
