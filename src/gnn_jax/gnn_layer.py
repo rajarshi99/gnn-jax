@@ -2,14 +2,10 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-from gnn_jax.mlp import MLP
-
-from typing import Sequence, Callable
-
 class GNNLayer(nn.Module):
-    msg: Callable
-    node_update: Callable
-    edge_update: Callable
+    msg: nn.Module
+    node_update: nn.Module
+    edge_update: nn.Module
 
     @nn.compact
     def __call__(self, h, e, senders, receivers):

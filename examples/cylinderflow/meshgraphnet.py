@@ -16,11 +16,15 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from gnn_jax.data.deepmind_cylinderflow import trajectory_iterator_np, NodeType
-from gnn_jax.normalizer import Normalizer
-from gnn_jax.mlp import MLP
-from gnn_jax.gnn_layer import GNNLayer
+import csv
 
+from gnn_jax.data.deepmind_cylinderflow import threaded_trajectory_iterator, NodeType
+from gnn_jax.mlp import MLP
+from gnn_jax.meshgraphnet import MeshGraphNet, save_checkpoint
+
+# -------------------------
+# Crucial MGN details
+# -------------------------
 class NodeUpdate(nn.Module):
     """
     Inputs
@@ -40,50 +44,9 @@ class NodeUpdate(nn.Module):
         )(x)
         return h + dh # Residual connection
 
-class MeshGraphNet(nn.Module):
-    latent_dim: int = 128
-    message_passing_steps: int = 15
-    node_type_dim: int = 9   # NORMAL..WALL_BOUNDARY
-    edge_feat_dim: int = 3   # dx, dy, dist
-
-    def setup(self):
-        self.node_norm = Normalizer(feature_dim=self.node_type_dim+2, name="node_norm")
-        self.edge_norm = Normalizer(feature_dim=self.edge_feat_dim, name="edge_norm")
-        self.out_data_norm = Normalizer(feature_dim=2, name="out_data_norm")
-
-        self.gnn_layers = [
-                GNNLayer(
-                    msg=MLP([self.latent_dim]*2, [nn.relu]*1, name=f"msg_{l}"),
-                    node_update=NodeUpdate(
-                        latent_dim=self.latent_dim,
-                        num_hidden_layers=1,
-                        name=f"node_{l}"
-                        ),
-                    edge_update=lambda e, m: e+m, # Residual connection
-                    name=f"gnn_{l}"
-                    )
-                for l in range(self.message_passing_steps)
-                ]
-
-        self.node_enc = MLP([self.latent_dim]*2, [nn.relu]*1, name="node_enc")
-        self.edge_enc = MLP([self.latent_dim]*2, [nn.relu]*1, name="edge_enc")
-        self.dec = MLP([self.latent_dim]*1 + [2], [nn.relu]*1, name="dec")
-
-    def __call__(self, node_in, edge_in, senders, receivers):
-        h = self.node_enc(self.node_norm.normalize(node_in))
-        e = self.edge_enc(self.edge_norm.normalize(edge_in))
-
-        for gnn_layer in self.gnn_layers:
-            h, e = gnn_layer(h, e, senders, receivers)
-
-        # decoder outputs delta_v (dvx, dvy)
-        delta_v = self.dec(h)
-        return self.out_data_norm.denormalize(delta_v)
-
-    def accumulate_norms(self, node_in, edge_in, delta_v_gt):
-        self.node_norm.accumulate(node_in)
-        self.edge_norm.accumulate(edge_in)
-        self.out_data_norm.accumulate(delta_v_gt)
+class EdgeUpdate(nn.Module):
+    def __call__(self, e, m):
+        return e + m # Residual connection
 
 # -------------------------
 # Training utilities
@@ -93,7 +56,7 @@ def create_variables(rng, model):
     # dummy init (only feature dims matter)
     N = 4
     E = 6
-    node_dim = 2 + model.node_type_dim
+    node_dim = model.node_feat_dim
     node_in = jnp.zeros((N, node_dim), dtype=jnp.float32)
     edge_in = jnp.zeros((E, model.edge_feat_dim), dtype=jnp.float32)
     senders = jnp.zeros((E,), dtype=jnp.int32)
@@ -121,39 +84,36 @@ def main():
     latent_dim = int(cfg["model"].get("latent_dim", 128))
     mp_steps = int(cfg["model"].get("message_passing_steps", 8))
     lr = float(cfg["train"].get("learning_rate", 1e-4))
-    steps = int(cfg["train"].get("steps", 5000))
+    steps = int(cfg["train"].get("steps", 500))
+    epochs = int(cfg["train"].get("epochs", 5))
+    max_steps_per_traj_for_stat_acc = int(cfg["train"].get("max_steps_per_traj_for_stat_acc", 5))
     seed = int(cfg["train"].get("seed", 0))
+    ckpt_dir = Path(cfg["output"]["ckpt_dir"])
+    log_path = Path(cfg["output"]["log"])
     num_types = NodeType.SIZE
 
-    # --- Load only the first trajectory (TF decode -> numpy) ---
-    traj = next(trajectory_iterator_np(train_path, meta_path))
-
-    # Convert required arrays to JAX once
-    mesh_pos = jnp.asarray(traj["mesh_pos"][0], dtype=jnp.float32)       # (N,2)
-    node_type = jnp.asarray(traj["node_type"][0, :, 0], dtype=jnp.int32) # (N,)
-    vel = jnp.asarray(traj["velocity"], dtype=jnp.float32)               # (T,N,2)
-    senders = jnp.asarray(traj["senders"], dtype=jnp.int32)              # (E,)
-    receivers = jnp.asarray(traj["receivers"], dtype=jnp.int32)          # (E,)
-
-    N = mesh_pos.shape[0]
-    T = vel.shape[0]
-
-    # --- Edge features: dx, dy, dist ---
-    rel = mesh_pos[receivers] - mesh_pos[senders]                         # (E,2)
-    dist = jnp.linalg.norm(rel, axis=1, keepdims=True)                    # (E,1)
-    edge_in = jnp.concatenate([rel, dist], axis=1).astype(jnp.float32)    # (E,3)
-
-    # --- Node type one-hot ---
-    node_type_oh = jax.nn.one_hot(node_type, num_classes=num_types, dtype=jnp.float32)  # (N,num_types)
-
-    # --- Loss mask: only NORMAL and OUTFLOW nodes ---
-    mask = (
-            (node_type == NodeType.NORMAL) |
-            (node_type == NodeType.OUTFLOW)
-            ).astype(jnp.float32)        # (N,)
-
     # --- Model/state ---
-    model = MeshGraphNet(latent_dim=latent_dim, message_passing_steps=mp_steps, node_type_dim=num_types)
+    model = MeshGraphNet(
+            latent_dim=latent_dim,
+            node_feat_dim=num_types+2,
+            node_enc=MLP([latent_dim]*2, [nn.relu]*1, name="node_enc"),
+            edge_feat_dim=3,
+            edge_enc=MLP([latent_dim]*2, [nn.relu]*1, name="edge_enc"),
+            message_passing_steps=mp_steps,
+            node_update_factory=lambda l: NodeUpdate(
+                latent_dim=latent_dim,
+                num_hidden_layers=1,
+                name=f"node_{l}"
+                ),
+            edge_update_factory=lambda l: EdgeUpdate(),
+            msg_compute_factory=lambda l: MLP(
+                [latent_dim]*2,
+                [nn.relu]*1,
+                name=f"msg_{l}"),
+            node_out_dim=2,
+            dec=MLP([latent_dim]*1 + [2], [nn.relu]*1, name="dec"),
+            )
+
     rng = jax.random.PRNGKey(seed)
     rng, init_rng = jax.random.split(rng)
     params, stats = create_variables(init_rng, model)
@@ -190,29 +150,82 @@ def main():
         )
         return mutated["stats"]
 
-    # --- Train by sampling (t -> t+1) from the ONE trajectory ---
-    for step in range(steps):
-        rng, sub = jax.random.split(rng)
-        t = int(jax.random.randint(sub, (), 0, T - 1))
-        v_t = vel[t]       # (N,2)
-        v_t1 = vel[t + 1]  # (N,2)
-        target_delta_v = v_t1 - v_t
-        node_in = jnp.concatenate([v_t, node_type_oh], axis=-1)
+    traj_it = threaded_trajectory_iterator(train_path, meta_path)
 
-        if int(stats["edge_norm"]["count"]) < 1_000_000:
-            stats = accumulate_stats(stats, node_in, edge_in, target_delta_v)
+    log_f = open(log_path, "w")
+    log_writer = csv.writer(log_f)
+    log_writer.writerow(["epoch", "step", "traj_id", "loss"])
 
-        # train params
-        params, opt_state, loss = train_step(
-            params, stats, opt_state,
-            node_in, edge_in, senders, receivers,
-            target_delta_v, mask
-        )
+    epoch = 0
+    traj_id = 0
 
-        if step % 100 == 0:
-            print(f"step {step:06d} | loss {float(loss):.6e}")
+    while epoch < epochs:
+        traj = next(traj_it, None)
 
-    print("Done (first trajectory only).")
+        if traj is None:
+            log_writer.writerow([epoch, step, traj_id, loss_val])
+            log_f.flush()
+            save_checkpoint(step, params, stats, epoch, epoch, ckpt_dir)
+            print(f"Saving end of epoch {epoch} in {ckpt_dir}")
+
+            epoch += 1
+            traj_id = 0
+            continue
+
+        # Convert required arrays to JAX
+        mesh_pos = jnp.asarray(traj["mesh_pos"][0], dtype=jnp.float32)       # (N,2)
+        node_type = jnp.asarray(traj["node_type"][0, :, 0], dtype=jnp.int32) # (N,)
+        vel = jnp.asarray(traj["velocity"], dtype=jnp.float32)               # (T,N,2)
+        senders = jnp.asarray(traj["senders"], dtype=jnp.int32)              # (E,)
+        receivers = jnp.asarray(traj["receivers"], dtype=jnp.int32)          # (E,)
+
+        N = mesh_pos.shape[0]
+        T = vel.shape[0]
+
+        # --- Edge features: dx, dy, dist ---
+        rel = mesh_pos[receivers] - mesh_pos[senders]                         # (E,2)
+        dist = jnp.linalg.norm(rel, axis=1, keepdims=True)                    # (E,1)
+        edge_in = jnp.concatenate([rel, dist], axis=1).astype(jnp.float32)    # (E,3)
+
+        # --- Node type one-hot ---
+        node_type_oh = jax.nn.one_hot(node_type, num_classes=num_types, dtype=jnp.float32)  # (N,num_types)
+
+        # --- Loss mask: only NORMAL and OUTFLOW nodes ---
+        mask = (
+                (node_type == NodeType.NORMAL) |
+                (node_type == NodeType.OUTFLOW)
+                ).astype(jnp.float32)        # (N,)
+
+
+        # --- Train by sampling (t -> t+1) from the trajectory ---
+        for step in range(steps):
+            rng, sub = jax.random.split(rng)
+            t = int(jax.random.randint(sub, (), 0, T - 1))
+            v_t = vel[t]       # (N,2)
+            v_t1 = vel[t + 1]  # (N,2)
+            target_delta_v = v_t1 - v_t
+            node_in = jnp.concatenate([v_t, node_type_oh], axis=-1)
+
+            if epoch == 0 and step < max_steps_per_traj_for_stat_acc:
+                stats = accumulate_stats(stats, node_in, edge_in, target_delta_v)
+
+            # train params
+            params, opt_state, loss = train_step(
+                params, stats, opt_state,
+                node_in, edge_in, senders, receivers,
+                target_delta_v, mask
+            )
+
+            if step % 100 == 0:
+                n_acc = stats["edge_norm"]["count"]
+                loss_val = float(loss)
+                print(f"epoch {epoch:06d} | step {step:06d} | traj_id {traj_id:06d} | loss {loss_val:.6e} | n_acc {n_acc}")
+                log_writer.writerow([epoch, step, traj_id, loss_val])
+
+        traj_id += 1
+
+    log_f.close()
+    print("Logs saved at {str(log_path)}")
 
 if __name__ == "__main__":
     main()

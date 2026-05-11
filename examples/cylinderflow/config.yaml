@@ -8,9 +8,15 @@ dataset:
 
 model:
   latent_dim: 128
-  message_passing_steps: 8
+  message_passing_steps: 15
 
 train:
   seed: 0
   learning_rate: 1e-4
-  steps: 1000
+  steps: 200
+  epochs: 5
+  max_steps_per_traj_for_stat_acc: 20
+
+output:
+  log: logs.csv
+  ckpt_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_deepmind/gnn_jax_trial
