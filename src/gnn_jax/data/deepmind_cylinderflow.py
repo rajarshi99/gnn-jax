@@ -3,6 +3,9 @@ import tensorflow as tf
 import numpy as np
 import enum
 
+import threading
+import queue
+
 class NodeType(enum.IntEnum):
     """
     Integer codes identifying the physical role of mesh nodes in DeepMind
@@ -106,3 +109,33 @@ def trajectory_iterator_np(tfrecord_path, meta_path):
         decoded["receivers"] = receivers
 
         yield decoded
+
+def threaded_trajectory_iterator(
+    tfrecord_path,
+    meta_path,
+    max_prefetch=4,
+):
+    """
+    Producer–consumer wrapper around trajectory_iterator_np.
+
+    Yields
+    ------
+    (dict | None, bool)
+        (trajectory, is_new_epoch)
+    """
+
+    q = queue.Queue(maxsize=max_prefetch)
+
+    def producer():
+        for traj in trajectory_iterator_np(tfrecord_path, meta_path):
+            q.put(traj)
+        q.put(None)
+
+    threading.Thread(
+        target=producer,
+        daemon=True,
+    ).start()
+
+    while True:
+        yield q.get()
+
