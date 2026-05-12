@@ -79,7 +79,8 @@ def trajectory_iterator_np(tfrecord_path, meta_path):
 
     data = tf.data.TFRecordDataset(tfrecord_path)
     feature_spec = { name: tf.io.FixedLenFeature([], tf.string) for name in meta["field_names"] }
-    data = data.map(lambda x: tf.io.parse_single_example(x, feature_spec), num_parallel_calls=1)
+    data = data.map(lambda x: tf.io.parse_single_example(x, feature_spec), num_parallel_calls=tf.data.AUTOTUNE)
+    data = data.prefetch(tf.data.AUTOTUNE)
 
     for rec in data:
         rec_bytes = {k: rec[k].numpy() for k in rec}

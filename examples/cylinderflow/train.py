@@ -10,17 +10,20 @@ All graph construction (senders/receivers), edge features, and training are JAX.
 import argparse
 import yaml
 from pathlib import Path
+import csv
+import time
 
 import jax
 import jax.numpy as jnp
+
 import optax
 from flax import linen as nn
-
-import csv
 
 from gnn_jax.data.deepmind_cylinderflow import threaded_trajectory_iterator, NodeType
 from gnn_jax.mlp import MLP
 from gnn_jax.meshgraphnet import MeshGraphNet, save_checkpoint
+
+import jraph
 
 # -------------------------
 # Crucial MGN details
@@ -52,6 +55,11 @@ class EdgeUpdate(nn.Module):
 # Training utilities
 # -------------------------
 
+def next_pow2(n: int):
+    if n <= 1:
+        return 1
+    return 1 << (n-1).bit_length()
+
 def create_variables(rng, model):
     # dummy init (only feature dims matter)
     N = 4
@@ -64,6 +72,22 @@ def create_variables(rng, model):
 
     variables = model.init(rng, node_in, edge_in, senders, receivers)
     return variables["params"], variables["stats"]
+
+def get_random_data_node_in_out(rng, vel, node_type_oh):
+    rng, sub = jax.random.split(rng)
+    T = vel.shape[0]
+    t = int(jax.random.randint(sub, (), 0, T - 1))
+    v_t = (vel[t])          # (N,2)
+    v_t1 = (vel[t+1])       # (N,2)
+    target_delta_v = v_t1 - v_t
+    node_in = jnp.concatenate([v_t, node_type_oh], axis=-1)
+    return rng, node_in, target_delta_v
+
+def get_data_edge_in(mesh_pos, senders, receivers):
+    rel = mesh_pos[receivers] - mesh_pos[senders]                         # (E,2)
+    dist = jnp.linalg.norm(rel, axis=1, keepdims=True)                    # (E,1)
+    edge_in = jnp.concatenate([rel, dist], axis=1).astype(jnp.float32)    # (E,3)
+    return edge_in
 
 # -------------------------
 # Main
@@ -122,15 +146,15 @@ def main():
 
     @jax.jit
     def train_step(params, stats, opt_state,
-                   node_in, edge_in, senders, receivers, target_delta_v, mask):
+                   node_in, edge_in, senders, receivers, target_delta_v, node_mask, edge_mask):
 
         def loss_fn(params):
             vars_ = {"params": params, "stats": stats}
             pred_delta_v = model.apply(
-                vars_, node_in, edge_in, senders, receivers
+                vars_, node_in, edge_in, senders, receivers, edge_mask
             )
             err = pred_delta_v - target_delta_v
-            mse = jnp.sum((err ** 2) * mask[:, None]) / (jnp.sum(mask) + 1e-8)
+            mse = jnp.sum((err ** 2) * node_mask[:, None]) / (jnp.sum(node_mask) + 1e-8)
             return mse
 
         loss, grads = jax.value_and_grad(loss_fn)(params)
@@ -139,7 +163,6 @@ def main():
 
         return params, opt_state, loss
 
-    @jax.jit
     def accumulate_stats(stats, node_in, edge_in, target_delta_v):
         vars_ = {"params": {}, "stats": stats}
         _, mutated = model.apply(
@@ -152,40 +175,48 @@ def main():
 
     traj_it = threaded_trajectory_iterator(train_path, meta_path)
 
-    log_f = open(log_path, "w")
-    log_writer = csv.writer(log_f)
-    log_writer.writerow(["epoch", "step", "traj_id", "loss"])
-
     epoch = 0
     traj_id = 0
+    total_N = 0
+    max_steps_per_traj_for_stat_acc = 1
+
+    log_f = open(log_path, "w")
+    log_writer = csv.writer(log_f)
+    log_writer.writerow(["epoch", "traj_id", "step", "loss", "elapsed_time"])
+    last_log_time = time.perf_counter()
 
     while epoch < epochs:
         traj = next(traj_it, None)
-
         if traj is None:
-            log_writer.writerow([epoch, step, traj_id, loss_val])
             log_f.flush()
-            save_checkpoint(step, params, stats, epoch, epoch, ckpt_dir)
+            save_checkpoint(step, params, stats, epoch, ckpt_dir)
             print(f"Saving end of epoch {epoch} in {ckpt_dir}")
+
+            if epoch == 0:
+                max_steps_per_traj_for_stat_acc = int(0.5 + (2_000_000 - total_N) / traj_id)
+                print(f"max_steps_per_traj_for_stat_acc {max_steps_per_traj_for_stat_acc}")
+                total_N = 0
 
             epoch += 1
             traj_id = 0
+            traj_it = threaded_trajectory_iterator(train_path, meta_path)
             continue
 
         # Convert required arrays to JAX
+        beg_load2jax = time.perf_counter()
         mesh_pos = jnp.asarray(traj["mesh_pos"][0], dtype=jnp.float32)       # (N,2)
         node_type = jnp.asarray(traj["node_type"][0, :, 0], dtype=jnp.int32) # (N,)
         vel = jnp.asarray(traj["velocity"], dtype=jnp.float32)               # (T,N,2)
         senders = jnp.asarray(traj["senders"], dtype=jnp.int32)              # (E,)
         receivers = jnp.asarray(traj["receivers"], dtype=jnp.int32)          # (E,)
+        end_load2jax = time.perf_counter()
+        print(f"Time to load into JAX {end_load2jax - beg_load2jax}")
 
         N = mesh_pos.shape[0]
-        T = vel.shape[0]
+        # T = vel.shape[0]
 
         # --- Edge features: dx, dy, dist ---
-        rel = mesh_pos[receivers] - mesh_pos[senders]                         # (E,2)
-        dist = jnp.linalg.norm(rel, axis=1, keepdims=True)                    # (E,1)
-        edge_in = jnp.concatenate([rel, dist], axis=1).astype(jnp.float32)    # (E,3)
+        edge_in = get_data_edge_in(mesh_pos, senders, receivers)
 
         # --- Node type one-hot ---
         node_type_oh = jax.nn.one_hot(node_type, num_classes=num_types, dtype=jnp.float32)  # (N,num_types)
@@ -196,31 +227,67 @@ def main():
                 (node_type == NodeType.OUTFLOW)
                 ).astype(jnp.float32)        # (N,)
 
+        # --- Data: Random time step from velocity ---
+        rng, node_in, target_delta_v = get_random_data_node_in_out(rng, vel, node_type_oh)
+        graph = jraph.GraphsTuple(
+            nodes=node_in,          # (N, F)
+            edges=edge_in,          # (E, D)
+            senders=senders,        # (E,)
+            receivers=receivers,    # (E,)
+            n_node=jnp.array([node_in.shape[0]]),
+            n_edge=jnp.array([edge_in.shape[0]]),
+            globals=None,
+        )
+        graph = jraph.pad_with_graphs(
+                graph,
+                n_node=next_pow2(node_in.shape[0]),
+                n_edge=next_pow2(edge_in.shape[0])
+                )
+        mask_padded = jnp.pad(
+                mask,
+                (0, graph.nodes.shape[0] - mask.shape[0]),
+                )
+        node_padding_mask = jraph.get_node_padding_mask(graph) # shape: (N_pad,)
+        edge_padding_mask = jraph.get_edge_padding_mask(graph) # shape: (N_pad,)
+        train_node_mask = node_padding_mask * mask_padded
 
         # --- Train by sampling (t -> t+1) from the trajectory ---
         for step in range(steps):
-            rng, sub = jax.random.split(rng)
-            t = int(jax.random.randint(sub, (), 0, T - 1))
-            v_t = vel[t]       # (N,2)
-            v_t1 = vel[t + 1]  # (N,2)
-            target_delta_v = v_t1 - v_t
-            node_in = jnp.concatenate([v_t, node_type_oh], axis=-1)
+            rng, node_in, target_delta_v = get_random_data_node_in_out(rng, vel, node_type_oh)
+            target_delta_v_padded = jnp.pad(
+                    target_delta_v,
+                    ((0, graph.nodes.shape[0] - target_delta_v.shape[0]), (0,0)),
+                    )
+            node_in_padded = jnp.pad(
+                    node_in,
+                    ((0, graph.nodes.shape[0] - node_in.shape[0]), (0,0)),
+                    )
 
-            if epoch == 0 and step < max_steps_per_traj_for_stat_acc:
+            if epoch <= 1 and step < max_steps_per_traj_for_stat_acc:
                 stats = accumulate_stats(stats, node_in, edge_in, target_delta_v)
+                total_N += N
 
             # train params
             params, opt_state, loss = train_step(
                 params, stats, opt_state,
-                node_in, edge_in, senders, receivers,
-                target_delta_v, mask
+                node_in_padded,
+                graph.edges,
+                graph.senders,
+                graph.receivers,
+                target_delta_v_padded,
+                train_node_mask,
+                edge_padding_mask
             )
 
             if step % 100 == 0:
-                n_acc = stats["edge_norm"]["count"]
                 loss_val = float(loss)
-                print(f"epoch {epoch:06d} | step {step:06d} | traj_id {traj_id:06d} | loss {loss_val:.6e} | n_acc {n_acc}")
-                log_writer.writerow([epoch, step, traj_id, loss_val])
+
+                now = time.perf_counter()
+                elapsed_time = now - last_log_time
+                last_log_time = now
+
+                print(f"epoch {epoch:06d} | traj_id {traj_id:06d} | step {step:06d} | loss {loss_val:.6e} | elapsed_time {elapsed_time}")
+                log_writer.writerow([epoch, traj_id, step, loss_val, elapsed_time])
 
         traj_id += 1
 

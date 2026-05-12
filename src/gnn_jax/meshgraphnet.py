@@ -38,12 +38,12 @@ class MeshGraphNet(nn.Module):
 
         self.out_data_norm = Normalizer(feature_dim=self.node_out_dim, name="out_data_norm")
 
-    def __call__(self, node_in, edge_in, senders, receivers):
+    def __call__(self, node_in, edge_in, senders, receivers, edge_mask=None):
         h = self.node_enc(self.node_norm.normalize(node_in))
         e = self.edge_enc(self.edge_norm.normalize(edge_in))
 
         for gnn_layer in self.gnn_layers:
-            h, e = gnn_layer(h, e, senders, receivers)
+            h, e = gnn_layer(h, e, senders, receivers, edge_mask)
 
         # decoder outputs delta_v (dvx, dvy)
         delta_v = self.dec(h)
