@@ -51,6 +51,26 @@ class EdgeUpdate(nn.Module):
     def __call__(self, e, m):
         return e + m # Residual connection
 
+class MessageCompute(nn.Module):
+    """
+    Inputs
+        -Edge embeddings/feats
+        -Sender node embeddings
+        -Receiver node embeddings
+    Returns: Edge message same dimension as e
+    """
+    latent_dim: int
+    num_hidden_layers: int
+
+    @nn.compact
+    def __call__(self, e, hs, hr):
+        m_in = jnp.concatenate([e, hs, hr], axis=-1)
+        m = MLP(
+            [self.latent_dim]*self.num_hidden_layers + [e.shape[-1]],
+            [nn.relu]*self.num_hidden_layers
+        )(m_in)
+        return m
+
 # -------------------------
 # Training utilities
 # -------------------------
@@ -130,9 +150,9 @@ def main():
                 name=f"node_{l}"
                 ),
             edge_update_factory=lambda l: EdgeUpdate(),
-            msg_compute_factory=lambda l: MLP(
-                [latent_dim]*2,
-                [nn.relu]*1,
+            msg_compute_factory=lambda l: MessageCompute(
+                latent_dim=latent_dim,
+                num_hidden_layers=1,
                 name=f"msg_{l}"),
             node_out_dim=2,
             dec=MLP([latent_dim]*1 + [2], [nn.relu]*1, name="dec"),
@@ -187,6 +207,7 @@ def main():
 
     while epoch < epochs:
         traj = next(traj_it, None)
+
         if traj is None:
             log_f.flush()
             save_checkpoint(step, params, stats, epoch, ckpt_dir)
@@ -238,10 +259,12 @@ def main():
             n_edge=jnp.array([edge_in.shape[0]]),
             globals=None,
         )
+        N_pad = next_pow2(mesh_pos.shape[0] + NodeType.SIZE)
+        E_pad = next_pow2(edge_in.shape[0])
         graph = jraph.pad_with_graphs(
                 graph,
-                n_node=next_pow2(node_in.shape[0]),
-                n_edge=next_pow2(edge_in.shape[0])
+                n_node=N_pad,
+                n_edge=E_pad
                 )
         mask_padded = jnp.pad(
                 mask,
@@ -280,7 +303,7 @@ def main():
             )
 
             if step % 100 == 0:
-                loss_val = float(loss)
+                loss_val = jax.device_get(loss).item()
 
                 now = time.perf_counter()
                 elapsed_time = now - last_log_time

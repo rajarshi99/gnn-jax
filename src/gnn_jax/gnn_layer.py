@@ -11,8 +11,7 @@ class GNNLayer(nn.Module):
     def __call__(self, h, e, senders, receivers, edge_mask=None):
         hs = h[senders]
         hr = h[receivers]
-        m_in = jnp.concatenate([e, hs, hr], axis=-1)
-        m = self.msg(m_in)
+        m = self.msg(e, hs, hr)
 
         if edge_mask is not None:
             m = m * edge_mask[:, None]
