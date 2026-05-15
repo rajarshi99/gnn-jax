@@ -72,7 +72,7 @@ def save_checkpoint(step, params, stats, epoch, ckpt_dir: Path, label = None):
         label = f"model_{label}"
     else:
         label = f"model_{epoch:06d}"
-    _checkpointer.save(ckpt_dir / f"model_{label}", state)
+    _checkpointer.save(ckpt_dir / label, state)
     return label
 
 def load_checkpoint(ckpt_path: Path):
