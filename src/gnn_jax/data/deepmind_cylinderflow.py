@@ -50,7 +50,7 @@ def cells_to_bi_edges(cells: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return senders, receivers
 
 
-def trajectory_iterator_np(tfrecord_path, meta_path):
+def trajectory_iterator_np(tfrecord_path, meta_path, traj_ids=None):
     """
     Lazily stream and decode DeepMind CylinderFlow
     TFRecord trajectories into NumPy arrays.
@@ -82,7 +82,13 @@ def trajectory_iterator_np(tfrecord_path, meta_path):
     data = data.map(lambda x: tf.io.parse_single_example(x, feature_spec), num_parallel_calls=tf.data.AUTOTUNE)
     data = data.prefetch(tf.data.AUTOTUNE)
 
+    traj_id = 0
     for rec in data:
+        if traj_ids is not None and traj_id not in traj_ids:
+            # print(f"Skip {traj_id}")
+            traj_id += 1
+            continue
+
         rec_bytes = {k: rec[k].numpy() for k in rec}
 
         decoded = {}
@@ -109,11 +115,13 @@ def trajectory_iterator_np(tfrecord_path, meta_path):
         decoded["senders"] = senders
         decoded["receivers"] = receivers
 
+        traj_id += 1
         yield decoded
 
 def threaded_trajectory_iterator(
     tfrecord_path,
     meta_path,
+    traj_ids=None,
     max_prefetch=4,
 ):
     """
@@ -128,7 +136,7 @@ def threaded_trajectory_iterator(
     q = queue.Queue(maxsize=max_prefetch)
 
     def producer():
-        for traj in trajectory_iterator_np(tfrecord_path, meta_path):
+        for traj in trajectory_iterator_np(tfrecord_path, meta_path, traj_ids):
             q.put(traj)
         q.put(None)
 

@@ -61,14 +61,22 @@ class MeshGraphNet(nn.Module):
 
 _checkpointer = ocp.StandardCheckpointer()
 
-def save_checkpoint(step, params, stats, epoch, ckpt_dir: Path):
+def save_checkpoint(step, params, stats, epoch, ckpt_dir: Path, label = None):
     state = {
         "params": params,
         "stats": stats,
         "step": step,
         "epoch": epoch,
     }
-    _checkpointer.save(ckpt_dir / f"model_{epoch:06d}", state)
+    if label:
+        label = f"model_{label}"
+    else:
+        label = f"model_{epoch:06d}"
+    _checkpointer.save(ckpt_dir / f"model_{label}", state)
+    return label
 
 def load_checkpoint(ckpt_path: Path):
     return _checkpointer.restore(ckpt_path)
+
+def close_checkpointer():
+    _checkpointer.close()

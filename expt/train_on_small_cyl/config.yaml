@@ -1,0 +1,33 @@
+dataset:
+  name: cylinderflow
+  dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_deepmind/cylinder_flow/
+  meta: meta.json
+  train: train.tfrecord
+  valid: valid.tfrecord
+  test: test.tfrecord
+
+model:
+  latent_dim: 128
+  message_passing_steps: 15
+
+train_base:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 500000
+  steps_per_log: 100
+  log: logs/base.csv
+  ckpt_dir: /media/user/HDD-UT/rajarshi_data/small_cyl/base
+
+train_asymm:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 500000
+  steps_per_log: 100
+  log: logs/aysmm.csv
+  ckpt_dir: /media/user/HDD-UT/rajarshi_data/small_cyl/asymm
+
+output:
+  test_rollout_errs: test_rollout_errs_MGN.json
+
+custom:
+  split_path: split.json
