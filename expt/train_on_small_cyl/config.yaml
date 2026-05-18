@@ -23,7 +23,7 @@ train_asymm:
   learning_rate: 1e-4
   steps: 500000
   steps_per_log: 100
-  log: logs/aysmm.csv
+  log: logs/asymm.csv
   ckpt_dir: /media/user/HDD-UT/rajarshi_data/small_cyl/asymm
 
 output:
