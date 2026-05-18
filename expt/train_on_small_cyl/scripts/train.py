@@ -153,9 +153,9 @@ def train(model, cfg_train, train_path, meta_path, train_traj_ids=None):
                 print(f"Saving state @ step {step} | {ckpt_dir} | {label}")
                 epoch += 1
                 if epoch == 1 and total_num_nodes_seen < 1_000_000:
-                    steps_per_traj = (1_000_000 - total_num_nodes_seen) // (traj_id + 1)
+                    steps_per_traj = max((1_000_000 - total_num_nodes_seen) // (traj_id + 1), 1)
                 else:
-                    steps_per_traj = min((steps - step) // (traj_id + 1), 20)
+                    steps_per_traj = max((steps - step) // (traj_id + 1), 2)
                     accumulate_stats_flag = False
                 traj_id = -1
                 traj_it = init_traj_it()
