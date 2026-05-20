@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 
 import numpy as np
-from gnn_jax.data.deepmind_cylinderflow import trajectory_iterator_np, NodeType
+from gnn_jax.data.cylinderflow_dm.load import trajectory_iterator_np, NodeType
 
 parser = argparse.ArgumentParser(
         description="Example file parsing tf records of cylinderflow simulations"

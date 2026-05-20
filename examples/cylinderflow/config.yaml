@@ -11,11 +11,14 @@ model:
   message_passing_steps: 15
 
 train:
-  seed: 0
+  seed: 42
   learning_rate: 1e-4
-  steps: 1000
-  epochs: 2
+  steps: 5000
+  steps_per_log: 100
+  log: logs/base.csv
+  ckpt_dir: /media/user/HDD-UT/rajarshi_data/gnn_jax_eg/train
 
-output:
-  log: logs.csv
-  ckpt_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_deepmind/gnn_jax_trial
+eval:
+  ckpt_dir: /media/user/HDD-UT/rajarshi_data/gnn_jax_eg/train
+  eval_dir: /media/user/HDD-UT/rajarshi_data/gnn_jax_eg/eval
+  log: logs/base_eval.csv

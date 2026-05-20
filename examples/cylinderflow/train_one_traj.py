@@ -17,7 +17,7 @@ import optax
 from flax import linen as nn
 from flax.training import train_state
 
-from gnn_jax.data.deepmind_cylinderflow import trajectory_iterator_np, NodeType
+from gnn_jax.data.cylinderflow_dm.load import trajectory_iterator_np, NodeType
 from gnn_jax.mlp import MLP
 from gnn_jax.gnn_layer import GNNLayer
 
