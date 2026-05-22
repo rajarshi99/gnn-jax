@@ -75,9 +75,10 @@ class EdgeUpdate(nn.Module):
 def main():
     expt_name = "base"
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type=str, choices=["train", "eval"], required=True)
+    parser.add_argument("--mode", type=str, choices=["train", "eval", "test"], required=True)
     parser.add_argument("--config", type=str, help="Path to config.yaml in train mode")
     parser.add_argument("--run_dir", type=str, help="Path to dir for eval mode")
+    parser.add_argument("--zeroE", action="store_true", help="Set input vel as zero ONLY in test mode")
     args = parser.parse_args()
     cfg = setup_run(args, expt_name)
 
@@ -121,6 +122,9 @@ def main():
     elif args.mode == "eval":
         test_traj_ids = split["test_traj_ids"]
         evaluate(model, cfg[expt_name], train_path, meta_path, test_traj_ids)
+    elif args.mode == "test":
+        test_path = data_dir / cfg["dataset"]["test"]
+        evaluate(model, cfg[expt_name], test_path, meta_path, zeroE=args.zeroE)
 
 if __name__ == "__main__":
     main()

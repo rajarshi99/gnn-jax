@@ -9,7 +9,7 @@ from pathlib import Path
 import csv
 import time
 
-def evaluate(model, cfg_eval, data_path, meta_path, test_traj_ids=None):
+def evaluate(model, cfg_eval, data_path, meta_path, test_traj_ids=None, zeroE=False):
     ckpt_dir = Path(cfg_eval["ckpt_dir"])
     state = load_checkpoint(ckpt_dir / "model_final")
     variables = {"params": state["params"], "stats": state["stats"]}
@@ -28,9 +28,19 @@ def evaluate(model, cfg_eval, data_path, meta_path, test_traj_ids=None):
                     )
             v_next = v_t + pred_delta_v
             return v_next, v_next
-        _, v_seq = jax.lax.scan(step_fn, traj.vel[0], length=traj.T-1)
+
+        if zeroE:
+            v0 = jnp.zeros_like(traj.vel[0])
+        else:
+            v0 = traj.vel[0]
+
+        _, v_seq = jax.lax.scan(step_fn, v0, length=traj.T-1)
+
         fout_path = eval_dir / f"traj_{traj_id:04d}.npz"
-        jnp.savez(fout_path, pred=v_seq, gt=traj.vel[1:])
+        if zeroE:
+            jnp.savez(fout_path, pred=v_seq)
+        else:
+            jnp.savez(fout_path, pred=v_seq, gt=traj.vel[1:])
         print(f"traj_id {traj_id} | shape {v_seq.shape} | @ {fout_path}")
         traj_id += 1
         traj_dict = next(traj_dict_it)
