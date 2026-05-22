@@ -8,7 +8,9 @@ dependencies = [
     "flax>=0.12.7",
     "jax[cuda13]>=0.10.0",
     "jraph>=0.0.6.dev0",
+    "matplotlib>=3.10.9",
     "optax>=0.2.8",
+    "pandas>=3.0.3",
     "tensorflow-cpu>=2.21.0",
 ]
 
