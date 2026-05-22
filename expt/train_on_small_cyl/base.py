@@ -7,19 +7,20 @@ TF is used only to decode the TFRecord into numpy arrays via trajectory_iterator
 All graph construction (senders/receivers), edge features, and training are JAX.
 """
 import argparse
-import yaml
 from pathlib import Path
-import json
 
 import jax.numpy as jnp
-
 from flax import linen as nn
 
-from gnn_jax.data.deepmind_cylinderflow import NodeType
+from gnn_jax.data.cylinderflow_dm.load import NodeType
 from gnn_jax.mlp import MLP
-from gnn_jax.meshgraphnet import MeshGraphNet, save_checkpoint, close_checkpointer
+from gnn_jax.meshgraphnet import MeshGraphNet
 
-from scripts.train import train
+from gnn_jax.data.cylinderflow_dm.train import train
+from gnn_jax.data.cylinderflow_dm.evaluate import evaluate
+from scripts.setup_run import setup_run
+
+import json
 
 # -------------------------
 # Crucial MGN details
@@ -72,13 +73,13 @@ class EdgeUpdate(nn.Module):
 # -------------------------
 
 def main():
+    expt_name = "base"
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train")
+    parser.add_argument("--mode", type=str, choices=["train", "eval"], required=True)
+    parser.add_argument("--config", type=str, help="Path to config.yaml in train mode")
+    parser.add_argument("--run_dir", type=str, help="Path to dir for eval mode")
     args = parser.parse_args()
-
-    with open(args.config, "r") as f:
-        cfg = yaml.safe_load(f)
+    cfg = setup_run(args, expt_name)
 
     data_dir = Path(cfg["dataset"]["dir"])
     train_path = data_dir / cfg["dataset"]["train"]
@@ -116,7 +117,10 @@ def main():
 
     if args.mode == "train":
         train_traj_ids = split["train_traj_ids"]
-        train(model, cfg["train_base"], train_path, meta_path, train_traj_ids)
+        train(model, cfg[expt_name], train_path, meta_path, train_traj_ids)
+    elif args.mode == "eval":
+        test_traj_ids = split["test_traj_ids"]
+        evaluate(model, cfg[expt_name], train_path, meta_path, test_traj_ids)
 
 if __name__ == "__main__":
     main()
