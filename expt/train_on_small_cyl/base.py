@@ -19,6 +19,7 @@ from gnn_jax.meshgraphnet import MeshGraphNet
 from gnn_jax.data.cylinderflow_dm.train import train
 from gnn_jax.data.cylinderflow_dm.evaluate import evaluate
 from scripts.setup_run import setup_run
+from scripts.asymm_check import asymm_check as check
 
 import json
 
@@ -62,6 +63,7 @@ class MessageCompute(nn.Module):
             [self.latent_dim]*self.num_hidden_layers + [e.shape[-1]],
             [nn.relu]*self.num_hidden_layers
         )(m_in)
+        self.sow("intermediates", "messages", m)
         return m
 
 class EdgeUpdate(nn.Module):
@@ -75,7 +77,7 @@ class EdgeUpdate(nn.Module):
 def main():
     expt_name = "base"
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type=str, choices=["train", "eval", "test"], required=True)
+    parser.add_argument("--mode", type=str, choices=["train", "eval", "test", "check"], required=True)
     parser.add_argument("--config", type=str, help="Path to config.yaml in train mode")
     parser.add_argument("--run_dir", type=str, help="Path to dir for eval mode")
     parser.add_argument("--zeroE", action="store_true", help="Set input vel as zero ONLY in test mode")
@@ -125,6 +127,9 @@ def main():
     elif args.mode == "test":
         test_path = data_dir / cfg["dataset"]["test"]
         evaluate(model, cfg[expt_name], test_path, meta_path, zeroE=args.zeroE)
+    elif args.mode == "check":
+        test_path = data_dir / cfg["dataset"]["test"]
+        check(model, cfg[expt_name], test_path, meta_path)
 
 if __name__ == "__main__":
     main()

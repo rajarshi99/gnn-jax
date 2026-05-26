@@ -40,6 +40,9 @@ def setup_run(args, expt_name):
         cfg[expt_name]["eval_dir"] = updated_eval_dir
         print(f"Since mode is test saving @ {updated_eval_dir}")
 
+    if args.mode == "check":
+        cfg[expt_name]["eval_dir"] = None
+
     return cfg
 
 
