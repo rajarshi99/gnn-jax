@@ -7,7 +7,6 @@ TF is used only to decode the TFRecord into numpy arrays via trajectory_iterator
 All graph construction (senders/receivers), edge features, and training are JAX.
 """
 import argparse
-from pathlib import Path
 
 import jax.numpy as jnp
 from flax import linen as nn
@@ -16,12 +15,8 @@ from gnn_jax.data.cylinderflow_dm.load import NodeType
 from gnn_jax.mlp import MLP
 from gnn_jax.meshgraphnet import MeshGraphNet
 
-from gnn_jax.data.cylinderflow_dm.train import train
-from gnn_jax.data.cylinderflow_dm.evaluate import evaluate
 from scripts.setup_run import setup_run
-from scripts.asymm_check import asymm_check as check
-
-import json
+from scripts.run_model import run_model
 
 # -------------------------
 # Crucial MGN details
@@ -84,10 +79,6 @@ def main():
     args = parser.parse_args()
     cfg = setup_run(args, expt_name)
 
-    data_dir = Path(cfg["dataset"]["dir"])
-    train_path = data_dir / cfg["dataset"]["train"]
-    meta_path = data_dir / cfg["dataset"]["meta"]
-
     latent_dim = int(cfg["model"].get("latent_dim", 128))
     mp_steps = int(cfg["model"].get("message_passing_steps", 8))
     num_types = NodeType.SIZE
@@ -114,22 +105,7 @@ def main():
             dec=MLP([latent_dim]*1 + [2], [nn.relu]*1, name="dec"),
             )
 
-    split_path = Path(cfg["custom"]["split_path"])
-    with open(split_path, "r") as f:
-        split = json.load(f)
-
-    if args.mode == "train":
-        train_traj_ids = split["train_traj_ids"]
-        train(model, cfg[expt_name], train_path, meta_path, train_traj_ids)
-    elif args.mode == "eval":
-        test_traj_ids = split["test_traj_ids"]
-        evaluate(model, cfg[expt_name], train_path, meta_path, test_traj_ids)
-    elif args.mode == "test":
-        test_path = data_dir / cfg["dataset"]["test"]
-        evaluate(model, cfg[expt_name], test_path, meta_path, zeroE=args.zeroE)
-    elif args.mode == "check":
-        test_path = data_dir / cfg["dataset"]["test"]
-        check(model, cfg[expt_name], test_path, meta_path)
+    run_model(model, expt_name, args, cfg)
 
 if __name__ == "__main__":
     main()
