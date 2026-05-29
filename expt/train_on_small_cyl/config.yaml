@@ -24,5 +24,23 @@ asymm:
   steps_per_log: 100
   out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/asymm
 
+dt:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 500000
+  steps_per_log: 100
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/dt
+  dt_max: 0.1
+  max_tstep: 8
+
+asymm_dt:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 500000
+  steps_per_log: 100
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/asymm_dt
+  dt_max: 0.1
+  max_tstep: 8
+
 custom:
   split_path: split.json

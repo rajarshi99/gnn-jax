@@ -5,13 +5,14 @@ import optax
 from flax import linen as nn
 
 import jraph
-from gnn_jax.meshgraphnet import MeshGraphNet, save_checkpoint, close_checkpointer
+from gnn_jax.meshgraphnet import save_checkpoint, close_checkpointer
 from gnn_jax.data.cylinderflow_dm.load import threaded_trajectory_iterator, NodeType
 from gnn_jax.data.cylinderflow_dm.trajectory import Trajectory
 
 from pathlib import Path
 import time
 import csv
+import json
 
 # -------------------------
 # Utilities
@@ -22,7 +23,7 @@ def next_pow2(n: int):
         return 1
     return 1 << (n-1).bit_length()
 
-def create_variables(rng, model):
+def create_variables(rng, model, max_tstep):
     # dummy init (only feature dims matter)
     N = 4
     E = 6
@@ -32,9 +33,12 @@ def create_variables(rng, model):
     senders = jnp.zeros((E,), dtype=jnp.int32)
     receivers = jnp.zeros((E,), dtype=jnp.int32)
 
-    return model.init(rng, node_in, edge_in, senders, receivers)
+    if max_tstep is None:
+        return model.init(rng, node_in, edge_in, senders, receivers)
+    else:
+        return model.init(rng, 0.42, node_in, edge_in, senders, receivers)
 
-def train(model, cfg_train, train_path, meta_path, train_traj_ids=None):
+def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_ids=None):
     seed = int(cfg_train.get("seed", 0))
     lr = float(cfg_train.get("learning_rate", 1e-4))
     steps = int(cfg_train.get("steps", 500))
@@ -44,37 +48,62 @@ def train(model, cfg_train, train_path, meta_path, train_traj_ids=None):
 
     rng = jax.random.PRNGKey(seed)
     rng, init_rng = jax.random.split(rng)
-    variables = create_variables(init_rng, model)
+    variables = create_variables(init_rng, model, max_tstep)
     params = variables["params"]
     stats = variables["stats"]
     tx = optax.adam(lr)
     opt_state = tx.init(params)
 
-    @jax.jit
-    def train_step(params, stats, opt_state,
-                   node_in, edge_in, senders, receivers, target_delta_v, node_mask, edge_mask):
+    with open(meta_path, "r") as f:
+        meta = json.load(f)
+    dt_min = meta["dt"]
 
-        def loss_fn(params):
-            vars_ = {"params": params, "stats": stats}
-            pred_delta_v = model.apply(
-                vars_, node_in, edge_in, senders, receivers, edge_mask
-            )
-            err = pred_delta_v - target_delta_v
-            mse = jnp.sum((err ** 2) * node_mask[:, None]) / (jnp.sum(node_mask) + 1e-8)
-            return mse
+    if max_tstep is None:
+        @jax.jit
+        def train_step(params, stats, opt_state,
+                       node_in, edge_in, senders, receivers, target_delta_v, node_mask, edge_mask):
 
-        loss, grads = jax.value_and_grad(loss_fn)(params)
-        updates, opt_state = tx.update(grads, opt_state, params)
-        params = optax.apply_updates(params, updates)
+            def loss_fn(params):
+                vars_ = {"params": params, "stats": stats}
+                pred_delta_v = model.apply(
+                    vars_, node_in, edge_in, senders, receivers, edge_mask
+                )
+                err = pred_delta_v - target_delta_v
+                mse = jnp.sum((err ** 2) * node_mask[:, None]) / (jnp.sum(node_mask) + 1e-8)
+                return mse
 
-        return params, opt_state, loss
+            loss, grads = jax.value_and_grad(loss_fn)(params)
+            updates, opt_state = tx.update(grads, opt_state, params)
+            params = optax.apply_updates(params, updates)
+
+            return params, opt_state, loss
+    else:
+        print("Making train step with dt")
+        @jax.jit
+        def train_step(params, stats, opt_state,
+                       dt_in, node_in, edge_in, senders, receivers, target_delta_v, node_mask, edge_mask):
+
+            def loss_fn(params):
+                vars_ = {"params": params, "stats": stats}
+                pred_delta_v = model.apply(
+                    vars_, dt_in, node_in, edge_in, senders, receivers, edge_mask
+                )
+                err = pred_delta_v - target_delta_v
+                mse = jnp.sum((err ** 2) * node_mask[:, None]) / (jnp.sum(node_mask) + 1e-8)
+                return mse
+
+            loss, grads = jax.value_and_grad(loss_fn)(params)
+            updates, opt_state = tx.update(grads, opt_state, params)
+            params = optax.apply_updates(params, updates)
+
+            return params, opt_state, loss
 
     def accumulate_stats(stats, node_in, edge_in, target_delta_v):
         vars_ = {"params": {}, "stats": stats}
         _, mutated = model.apply(
             vars_,
             node_in, edge_in, target_delta_v,
-            method=MeshGraphNet.accumulate_norms,
+            method=model.accumulate_norms,
             mutable=["stats"],
         )
         return mutated["stats"]
@@ -125,8 +154,9 @@ def train(model, cfg_train, train_path, meta_path, train_traj_ids=None):
                     )
             edge_padding_mask = jraph.get_edge_padding_mask(graph) # shape: (E_pad,)
 
-        # --- Train by sampling (t -> t+1) from the trajectory ---
-        rng, node_in, target_delta_v = traj.get_random_data_node_in_out(rng)
+        # --- Train by sampling (t_curr -> t_next) from the trajectory ---
+        rng, n_tstep, node_in, target_delta_v = traj.get_random_data_in_out(rng, max_tstep)
+
         if accumulate_stats_flag:
             stats = accumulate_stats(stats, node_in, traj.edge_in, target_delta_v)
             total_num_nodes_seen += traj.N
@@ -141,16 +171,29 @@ def train(model, cfg_train, train_path, meta_path, train_traj_ids=None):
                 )
 
         # train params
-        params, opt_state, loss = train_step(
-            params, stats, opt_state,
-            node_in_padded,
-            graph.edges,
-            graph.senders,
-            graph.receivers,
-            target_delta_v_padded,
-            mask_padded,
-            edge_padding_mask
-        )
+        if max_tstep is None:
+            params, opt_state, loss = train_step(
+                params, stats, opt_state,
+                node_in_padded,
+                graph.edges,
+                graph.senders,
+                graph.receivers,
+                target_delta_v_padded,
+                mask_padded,
+                edge_padding_mask
+            )
+        else:
+            params, opt_state, loss = train_step(
+                params, stats, opt_state,
+                n_tstep * dt_min,
+                node_in_padded,
+                graph.edges,
+                graph.senders,
+                graph.receivers,
+                target_delta_v_padded,
+                mask_padded,
+                edge_padding_mask
+            )
 
         if step % steps_per_log == 0:
             loss_val = jax.device_get(loss).item()

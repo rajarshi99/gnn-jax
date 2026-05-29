@@ -48,12 +48,22 @@ class Trajectory:
             globals=None,
         )
 
-    def get_random_data_node_in_out(self, rng):
+    def get_random_data_in_out(self, rng, max_tstep):
+        # First decide n_tstep
+        if max_tstep is None:
+            n_tstep = 1
+        else:
+            rng, sub = jax.random.split(rng)
+            n_tstep = int(jax.random.randint(sub, (), 1, max_tstep+1))
+
+        # Then decide current time t1 and next time step t2
         rng, sub = jax.random.split(rng)
-        t = int(jax.random.randint(sub, (), 0, self.T - 1))
-        v_t = (self.vel[t])          # (N,2)
-        v_t1 = (self.vel[t+1])       # (N,2)
-        target_delta_v = v_t1 - v_t
-        node_in = jnp.concatenate([v_t, self.node_type_oh], axis=-1)
-        return rng, node_in, target_delta_v
+        t1 = int(jax.random.randint(sub, (), 0, self.T - n_tstep))
+        t2 = t1 + n_tstep
+        v_t1 = (self.vel[t1])       # (N,2)
+        v_t2 = (self.vel[t2])       # (N,2)
+
+        target_delta_v = v_t2 - v_t1
+        node_in = jnp.concatenate([v_t1, self.node_type_oh], axis=-1)
+        return rng, n_tstep, node_in, target_delta_v
 
