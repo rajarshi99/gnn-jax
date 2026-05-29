@@ -72,4 +72,4 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
 
         print(f"traj_id {traj_id} | shape {v_seq.shape} | @ {fout_path} | {v_seq.shape} | {v_gt.shape}")
         traj_id += 1
-        traj_dict = next(traj_dict_it)
+        traj_dict = next(traj_dict_it, None)
