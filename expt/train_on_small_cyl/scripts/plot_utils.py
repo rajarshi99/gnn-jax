@@ -29,18 +29,27 @@ def get_rollout_t_vs_err(traj_rollout_path):
     t = np.arange(1, err.shape[0]+1) * t_skip * dt_min
     return t, err
 
-def plot_loss(train_fname, plot_info_list, out_fname, alpha=None):
+def plot_loss(train_fname, plot_info_list, out_fname, alpha=None, init_ind=10):
+    if alpha is None:
+        plt.ylabel("Loss")
+    else:
+        plt.ylabel("Loss (smooth)")
     for p in plot_info_list:
         df = pd.read_csv(p["run_dir"] / train_fname)
+        if len(df.index) < init_ind:
+            init_ind = 0
         if alpha is None:
-            plt.plot(df["step"], df["loss"], alpha=0.69, color=p["color"], label=p["label"])
+            plt.plot(df["step"][init_ind:], df["loss"][init_ind:],
+                     alpha=0.69, color=p["color"], label=p["label"])
         else:
-            plt.plot(df["step"], ema(df["loss"], alpha=alpha), alpha=0.69, color=p["color"], label=p["label"])
+            plt.plot(
+                    df["step"][init_ind:],
+                    ema(df["loss"], alpha=alpha)[init_ind:],
+                    alpha=0.69, color=p["color"], label=p["label"])
     plt.legend()
     plt.grid()
     plt.yscale("log")
     plt.xlabel("Step")
-    plt.ylabel("Loss")
     print(f"Saving @ {out_fname}")
     plt.savefig(out_fname)
     plt.close()
@@ -86,9 +95,8 @@ def plot_rollout_stats(plot_info_list, rollout_dir, out_fname, mask_fn):
 
             err_means[label] = []
             colors[label] = p["color"]
-            print(label, t_dir)
-            for traj_f in t_dir.glob("traj_*.npz"):
-                print(label, traj_f)
+            print("\t", label, t_dir)
+            for i, traj_f in enumerate(t_dir.glob("traj_*.npz")):
                 t, err = get_rollout_t_vs_err(traj_f)
                 err_means[label].append(err[mask_fn(t)].mean())
 
@@ -110,6 +118,7 @@ def plot_rollout_stats(plot_info_list, rollout_dir, out_fname, mask_fn):
     plt.xticks(range(1,len(x_lab_sorted)+1), x_lab_sorted, rotation=45)
     plt.ylabel("Mean rollout error")
     plt.yscale("log")
+    plt.grid()
 
     plt.tight_layout()
     print(f"Saving @ {out_fname}")
