@@ -28,8 +28,11 @@ def run_model(model, expt_name, args, cfg, dt_flag=False):
         train(model, cfg[expt_name], train_path, meta_path, max_tstep=max_tstep, train_traj_ids=train_traj_ids)
     elif args.mode == "eval":
         test_traj_ids = split["test_traj_ids"]
-        cfg[expt_name]["eval_dir"] = str(run_dir / "eval_final")
-        evaluate(model, cfg[expt_name], train_path, meta_path, dt_step=dt_step, test_traj_ids=test_traj_ids)
+        out_dir_name = "eval_final"
+        if args.zeroE:
+            out_dir_name += "_zeroE"
+        cfg[expt_name]["eval_dir"] = str(run_dir / out_dir_name)
+        evaluate(model, cfg[expt_name], train_path, meta_path, dt_step=dt_step, test_traj_ids=test_traj_ids, zeroE=args.zeroE)
     elif args.mode == "test":
         test_path = data_dir / cfg["dataset"]["test"]
         out_dir_name = "test"
