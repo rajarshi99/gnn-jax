@@ -43,7 +43,7 @@ class NodeUpdate(nn.Module):
 class MessageCompute(nn.Module):
     """
     Inputs
-        -Edge embeddings/feats
+        -Edge embeddings
         -Sender node embeddings
         -Receiver node embeddings
     Returns: Edge message same dimension as e
@@ -58,10 +58,16 @@ class MessageCompute(nn.Module):
             [self.latent_dim]*self.num_hidden_layers + [e.shape[-1]],
             [nn.relu]*self.num_hidden_layers
         )(m_in)
-        self.sow("intermediates", "messages", m)
+        self.sow("intermediates", "messages", m) # To get values for check mode
         return m
 
 class EdgeUpdate(nn.Module):
+    """
+    Inputs
+        -Edge embeddings
+        -Edge message same dimension as e
+    Returns: Updated Edge Embeddings with residual connection
+    """
     def __call__(self, e, m):
         return e + m # Residual connection
 
