@@ -10,15 +10,35 @@ model:
   latent_dim: 128
   message_passing_steps: 15
 
-train:
+base:
   seed: 42
   learning_rate: 1e-4
-  steps: 5000
+  steps: 1000000
   steps_per_log: 100
-  log: logs/base.csv
-  ckpt_dir: /media/user/HDD-UT/rajarshi_data/gnn_jax_eg/train
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/base1M
 
-eval:
-  ckpt_dir: /media/user/HDD-UT/rajarshi_data/gnn_jax_eg/train
-  eval_dir: /media/user/HDD-UT/rajarshi_data/gnn_jax_eg/eval
-  log: logs/base_eval.csv
+asymm:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 1000000
+  steps_per_log: 100
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/asym1M
+
+tau:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 1000000
+  steps_per_log: 100
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/tau1M
+  dt_max: 0.1
+  max_tstep: 8
+
+asymm_tau:
+  seed: 42
+  learning_rate: 1e-4
+  steps: 1000000
+  steps_per_log: 100
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylinder_flow_expt/asymm_tau1M
+  dt_max: 0.1
+  max_tstep: 8
+
