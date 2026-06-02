@@ -26,9 +26,14 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
         t_skip = dt_step
         dt_phy = dt_min * dt_step
 
-    eval_dir = Path(cfg_eval["eval_dir"])
-    eval_dir = Path(eval_dir / f"dt_{t_skip:02d}")
+    eval_dir = cfg_eval.get("eval_dir")
+    if eval_dir is None:
+        eval_dir = Path(cfg_eval["ckpt_dir"]) / "eval"
+    else:
+        eval_dir = Path(eval_dir)
+    eval_dir = eval_dir / f"dt_{t_skip:02d}"
     eval_dir.mkdir(parents=True, exist_ok=True)
+
     traj_id = 0
     traj_dict_it = threaded_trajectory_iterator(data_path, meta_path, traj_ids=test_traj_ids)
     traj_dict = next(traj_dict_it)
