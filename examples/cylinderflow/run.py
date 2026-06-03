@@ -32,7 +32,7 @@ def main():
 
     data_dir = Path(cfg["dataset"]["dir"])
     train_path = data_dir / cfg["dataset"]["train"]
-    test_path = data_dir / cfg["dataset"]["train"]
+    test_path = data_dir / cfg["dataset"]["test"]
     meta_path = data_dir / cfg["dataset"]["meta"]
 
     model = get_model(cfg, args.asymm, args.tau, expt)
