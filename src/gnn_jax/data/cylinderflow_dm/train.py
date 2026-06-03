@@ -98,6 +98,7 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
 
             return params, opt_state, loss
 
+    @jax.jit
     def accumulate_stats(stats, node_in, edge_in, target_delta_v):
         vars_ = {"params": {}, "stats": stats}
         _, mutated = model.apply(
@@ -131,7 +132,8 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
                 if epoch == 1 and total_num_nodes_seen < 1_000_000:
                     steps_per_traj = max((1_000_000 - total_num_nodes_seen) // (traj_id + 1), 1)
                 else:
-                    steps_per_traj = max((steps - step) // (traj_id + 1), 2)
+                    # steps_per_traj = max((steps - step) // (traj_id + 1), 2)
+                    steps_per_traj = 10 # Trying to reduce sampling bias?
                     accumulate_stats_flag = False
                 traj_id = -1
                 traj_it = init_traj_it()
