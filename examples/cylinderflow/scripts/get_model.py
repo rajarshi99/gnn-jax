@@ -59,7 +59,7 @@ class EdgeUpdate(nn.Module):
     def __call__(self, e, m):
         return e + m # Residual connection
 
-def get_model(cfg, asymm, tau, expt_name):
+def get_model(cfg, asymm_flag, tau_flag, expt_name):
     latent_dim = int(cfg["model"].get("latent_dim", 128))
     mp_steps = int(cfg["model"].get("message_passing_steps", 8))
     num_types = NodeType.SIZE
@@ -84,7 +84,7 @@ def get_model(cfg, asymm, tau, expt_name):
     node_out_dim=2
     dec=MLP([latent_dim]*1 + [2], [nn.relu]*1, name="dec")
 
-    if asymm:
+    if asymm_flag:
         edge_update_factory = edge_update_factory=lambda l: asymm.EdgeUpdate()
         msg_compute_factory = lambda l: asymm.MessageCompute(
                 latent_dim=latent_dim,
@@ -93,7 +93,7 @@ def get_model(cfg, asymm, tau, expt_name):
                 )
         edge_feat_dim=1
 
-    if tau:
+    if tau_flag:
         node_update_factory = lambda l: tau.NodeUpdate(
                 latent_dim=latent_dim,
                 num_hidden_layers=1,
@@ -101,7 +101,7 @@ def get_model(cfg, asymm, tau, expt_name):
                 )
 
         model = DtMeshGraphNet(
-                dt_max=float(cfg[expt_name].get("dt_max", 0.1)),
+                dtMax=float(cfg[expt_name].get("dt_max", 0.1)),
                 latent_dim=latent_dim,
                 node_feat_dim=node_feat_dim,
                 node_enc=node_enc,
