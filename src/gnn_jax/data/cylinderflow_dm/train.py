@@ -51,7 +51,14 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
     variables = create_variables(init_rng, model, max_tstep)
     params = variables["params"]
     stats = variables["stats"]
-    tx = optax.adam(lr)
+    tx = optax.adam(
+            optax.exponential_decay(
+                init_value=lr,
+                transition_steps=steps // 10,
+                decay_rate=0.9,
+                staircase=True
+                )
+            )
     opt_state = tx.init(params)
 
     with open(meta_path, "r") as f:
