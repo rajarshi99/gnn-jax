@@ -72,14 +72,13 @@ def get_rollout_t_vs_err(traj_rollout_path):
     traj = np.load(traj_rollout_path)
     if "gt" in traj:
         err = traj["pred"] - traj["gt"]
+        err = np.linalg.norm(err, axis=(-1,-2)) / (np.linalg.norm(traj["gt"], axis=(-1,-2)) + 1e-7)
     else:
-        err = traj["pred"] # zeroE case
+        err = np.linalg.norm(traj["pred"], axis=(-1,-2)) # zeroE case
     if "t_skip" in traj:
         t_skip = traj["t_skip"]
     else:
         t_skip = 1
-    err = np.linalg.norm(err, axis=-1)
-    err = err.mean(axis=-1) # Average over space
     t = np.arange(1, err.shape[0]+1) * t_skip * dt_min
     return t, err
 
@@ -170,7 +169,7 @@ def plot_rollout_stats(plot_info_list, rollout_dir, out_fname, mask_fn):
         patch.set_facecolor(c)
 
     plt.yticks(range(1,len(labels_sorted)+1), labels_sorted)
-    plt.xlabel("Mean rollout error")
+    plt.xlabel("Time averaged rollout error")
     plt.xscale("log")
 
     plt.gca().set_axisbelow(True)
@@ -182,6 +181,7 @@ def plot_rollout_stats(plot_info_list, rollout_dir, out_fname, mask_fn):
     plt.close()
 
 def plot_acc_cost(plot_info_list, rollout_dir, out_fname, mask_fn):
+    cost_list_len = 0
     for p in plot_info_list:
         label = p["label"]
         eval_dir = p["run_dir"] / rollout_dir
@@ -205,20 +205,52 @@ def plot_acc_cost(plot_info_list, rollout_dir, out_fname, mask_fn):
                     n_fail += 1
                 n_tot += 1
             print("\t", label, t_dir, "n_tot:", n_tot, "| n_fail:", n_fail)
+            if n_fail > 0:
+                continue
             cost_list.append(t.shape[0])
             avg_err_list.append(np.mean(tavg_err_list))
             std_err_list.append(np.std(tavg_err_list))
+        
 
         plt.errorbar(cost_list, avg_err_list, yerr=std_err_list, fmt="o", capsize=4, color=p["color"], label=label)
         plt.errorbar(cost_list, avg_err_list, linestyle="--", color=p["color"])
 
-    plt.xlabel("Cost: No. Rollout Iterations")
-    plt.ylabel("Error")
+        if len(cost_list) > cost_list_len:
+            longest_cost_list = cost_list
+
+    plt.xlabel("Cost: number of rollout iterations")
+    plt.xscale("log")
+    plt.ylabel("Time averaged rollout error")
     plt.yscale("log")
     plt.legend()
 
-    plt.gca().set_axisbelow(True)
-    plt.gca().grid(True, linestyle='--', color='0.5', linewidth=0.7, alpha=0.7)
+    ax = plt.gca()
+
+    ax.set_axisbelow(True)
+    ax.grid(True, linestyle='--', color='0.5', linewidth=0.7, alpha=0.7)
+
+    secax = ax.twiny()
+    secax.set_xscale(ax.get_xscale())
+    secax.set_xlim(ax.get_xlim())
+    xticks = []
+    xticklabels = []
+    prev = None
+    for cost in longest_cost_list:
+        val = dt_min * max(longest_cost_list) / cost
+        if prev is None:
+            xticks.append(cost)
+            xticklabels.append(f"{(val):.2f}")
+            prev = val
+        elif np.log(val) - np.log(prev) > 0.2:
+            xticks.append(cost)
+            xticklabels.append(f"{(val):.2f}")
+            prev = val
+    secax.set_xticks(xticks)
+    secax.set_xticklabels(xticklabels)
+    secax.set_xlabel("Time step value")
+    secax.xaxis.set_ticks_position("bottom")
+    secax.xaxis.set_label_position("bottom")
+    secax.spines["bottom"].set_position(("axes", -0.2))
 
     print(f"Saving @ {out_fname}")
     plt.savefig(out_fname)
