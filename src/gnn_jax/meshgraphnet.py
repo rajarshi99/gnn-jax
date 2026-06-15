@@ -27,6 +27,9 @@ class MeshGraphNet(nn.Module):
         self.node_norm = Normalizer(feature_dim=self.node_feat_dim, name="node_norm")
         self.edge_norm = Normalizer(feature_dim=self.edge_feat_dim, name="edge_norm")
 
+        self.h_ln = nn.LayerNorm()
+        self.e_ln = nn.LayerNorm()
+
         self.gnn_layers = [
                 GNNLayer(
                     msg = self.msg_compute_factory(l),
@@ -39,8 +42,16 @@ class MeshGraphNet(nn.Module):
         self.out_data_norm = Normalizer(feature_dim=self.node_out_dim, name="out_data_norm")
 
     def __call__(self, node_in, edge_in, senders, receivers, edge_mask=None):
-        h = self.node_enc(self.node_norm.normalize(node_in))
-        e = self.edge_enc(self.edge_norm.normalize(edge_in))
+        h = self.h_ln(
+                self.node_enc(
+                    self.node_norm.normalize(node_in)
+                    )
+                )
+        e = self.e_ln(
+                self.edge_enc(
+                    self.edge_norm.normalize(edge_in)
+                    )
+                )
 
         for gnn_layer in self.gnn_layers:
             h, e = gnn_layer(h, e, senders, receivers, edge_mask)

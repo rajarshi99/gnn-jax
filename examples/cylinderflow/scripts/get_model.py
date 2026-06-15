@@ -33,6 +33,7 @@ class NodeUpdate(nn.Module):
             [self.latent_dim]*self.num_hidden_layers + [h.shape[-1]],
             [nn.relu]*self.num_hidden_layers
         )(x)
+        dh = nn.LayerNorm()(dh) # Layer Norm
         return h + dh # Residual connection
 
 class MessageCompute(nn.Module):
@@ -53,7 +54,7 @@ class MessageCompute(nn.Module):
             [self.latent_dim]*self.num_hidden_layers + [e.shape[-1]],
             [nn.relu]*self.num_hidden_layers
         )(m_in)
-        return m
+        return nn.LayerNorm()(m)
 
 class EdgeUpdate(nn.Module):
     def __call__(self, e, m):
