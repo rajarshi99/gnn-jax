@@ -48,7 +48,7 @@ class Trajectory:
             globals=None,
         )
 
-    def get_random_data_in_out(self, rng, max_tstep):
+    def get_random_data_in_out(self, rng, max_tstep, add_noise=True):
         # First decide n_tstep
         if max_tstep is None:
             n_tstep = 1
@@ -62,6 +62,11 @@ class Trajectory:
         t2 = t1 + n_tstep
         v_t1 = (self.vel[t1])       # (N,2)
         v_t2 = (self.vel[t2])       # (N,2)
+
+        if add_noise:
+            rng, noise_rng = jax.random.split(rng)
+            noise_std = 2e-2 # from MGN paper Appendix
+            v_t1 += noise_std * jax.random.normal(noise_rng, v_t1.shape)
 
         target_delta_v = v_t2 - v_t1
         node_in = jnp.concatenate([v_t1, self.node_type_oh], axis=-1)
