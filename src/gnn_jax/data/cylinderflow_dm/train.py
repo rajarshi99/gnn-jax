@@ -72,10 +72,15 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
 
             def loss_fn(params):
                 vars_ = {"params": params, "stats": stats}
-                pred_delta_v = model.apply(
+                target_norm = model.apply(
+                        vars_,
+                        target_delta_v,
+                        method=lambda m,x: m.out_data_norm.normalize(x)
+                        )
+                pred = model.apply(
                     vars_, node_in, edge_in, senders, receivers, edge_mask
                 )
-                err = pred_delta_v - target_delta_v
+                err = pred - target_norm
                 mse = jnp.sum((err ** 2) * node_mask[:, None]) / (jnp.sum(node_mask) + 1e-8)
                 return mse
 
@@ -92,10 +97,15 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
 
             def loss_fn(params):
                 vars_ = {"params": params, "stats": stats}
-                pred_delta_v = model.apply(
+                target_norm = model.apply(
+                        vars_,
+                        target_delta_v,
+                        method=lambda m,x: m.out_data_norm.normalize(x)
+                        )
+                pred = model.apply(
                     vars_, dt_in, node_in, edge_in, senders, receivers, edge_mask
                 )
-                err = pred_delta_v - target_delta_v
+                err = pred - target_norm
                 mse = jnp.sum((err ** 2) * node_mask[:, None]) / (jnp.sum(node_mask) + 1e-8)
                 return mse
 

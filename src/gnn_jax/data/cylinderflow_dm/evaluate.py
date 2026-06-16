@@ -43,10 +43,15 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
         if dt_step is None:
             def step_fn(v_t,_):
                 node_in = jnp.concatenate([v_t, traj.node_type_oh], axis=-1)
-                pred_delta_v = model.apply(
+                pred = model.apply(
                         variables, node_in, traj.edge_in, traj.senders, traj.receivers
                         )
-                v_temp = v_t + pred_delta_v
+                delta_v = model.apply(
+                        variables,
+                        pred,
+                        method=lambda m,x: m.out_data_norm.denormalize(x)
+                        )
+                v_temp = v_t + delta_v
                 v_next = jnp.where(traj.mask[:,None], v_temp, v_t)
                 return v_next, v_next
         else:
@@ -55,7 +60,12 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
                 pred_delta_v = model.apply(
                         variables, dt_phy, node_in, traj.edge_in, traj.senders, traj.receivers
                         )
-                v_temp = v_t + pred_delta_v
+                delta_v = model.apply(
+                        variables,
+                        pred,
+                        method=lambda m,x: m.out_data_norm.denormalize(x)
+                        )
+                v_temp = v_t + delta_v
                 v_next = jnp.where(traj.mask[:,None], v_temp, v_t)
                 return v_next, v_next
 

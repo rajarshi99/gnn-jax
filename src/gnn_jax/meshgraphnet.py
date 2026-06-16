@@ -56,9 +56,7 @@ class MeshGraphNet(nn.Module):
         for gnn_layer in self.gnn_layers:
             h, e = gnn_layer(h, e, senders, receivers, edge_mask)
 
-        # decoder outputs delta_v (dvx, dvy)
-        delta_v = self.dec(h)
-        return self.out_data_norm.denormalize(delta_v)
+        return self.dec(h)
 
     def accumulate_norms(self, node_in, edge_in, delta_v_gt):
         self.node_norm.accumulate(node_in)
