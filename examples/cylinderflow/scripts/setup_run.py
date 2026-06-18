@@ -29,6 +29,9 @@ def setup_run(args):
         shutil.copy(Path(__file__), run_dir / Path(__file__).name)
         return expt, cfg
 
+    if args.custom:
+        cfg["custom"]["flag"] = True
+
     return expt, cfg
 
 
