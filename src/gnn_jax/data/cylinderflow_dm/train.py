@@ -143,7 +143,7 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
             traj = next(traj_it, None)
             if traj is None:
                 log_f.flush()
-                label = save_checkpoint(step, params, stats, epoch, ckpt_dir)
+                label = save_checkpoint(step, params, opt_state, stats, epoch, rng, ckpt_dir)
                 print(f"Saving state @ step {step} | {ckpt_dir} | {label}")
                 epoch += 1
                 if epoch == 1 and total_num_nodes_seen < 1_000_000:
@@ -227,7 +227,7 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
     log_f.close()
     print(f"Logs saved at {str(log_path)}")
 
-    label = save_checkpoint(step, params, stats, epoch, ckpt_dir, label="final")
+    label = save_checkpoint(step, params, opt_state, stats, epoch, rng, ckpt_dir, label="final")
     print(f"Final check point saved @ {ckpt_dir} | {label}")
     close_checkpointer()
 

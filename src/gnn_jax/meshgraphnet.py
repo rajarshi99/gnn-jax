@@ -72,10 +72,12 @@ _checkpointer = ocp.StandardCheckpointer()
 
 def save_checkpoint(step, params, stats, epoch, ckpt_dir: Path, label = None):
     state = {
-        "params": params,
-        "stats": stats,
         "step": step,
+        "params": params,
+        "opt_state": opt_state,
+        "stats": stats,
         "epoch": epoch,
+        "rng": rng
     }
     if label:
         label = f"model_{label}"
