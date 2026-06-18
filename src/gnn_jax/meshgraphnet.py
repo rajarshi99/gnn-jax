@@ -70,7 +70,7 @@ class MeshGraphNet(nn.Module):
 
 _checkpointer = ocp.StandardCheckpointer()
 
-def save_checkpoint(step, params, stats, epoch, ckpt_dir: Path, label = None):
+def save_checkpoint(step, params, opt_state, stats, epoch, rng, ckpt_dir: Path, label = None):
     state = {
         "step": step,
         "params": params,
