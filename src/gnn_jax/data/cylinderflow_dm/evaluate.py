@@ -57,7 +57,7 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
         else:
             def step_fn(v_t,_):
                 node_in = jnp.concatenate([v_t, traj.node_type_oh], axis=-1)
-                pred_delta_v = model.apply(
+                pred = model.apply(
                         variables, dt_phy, node_in, traj.edge_in, traj.senders, traj.receivers
                         )
                 delta_v = model.apply(
