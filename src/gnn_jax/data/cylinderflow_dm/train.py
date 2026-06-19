@@ -140,8 +140,9 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
     last_log_time = time.perf_counter()
     for step in range(steps):
         if step % steps_per_traj == 0:
-            traj = next(traj_it, None)
-            if traj is None:
+            try:
+                traj = next(traj_it)
+            except StopIteration:
                 log_f.flush()
                 label = save_checkpoint(step, params, opt_state, stats, epoch, rng, ckpt_dir)
                 print(f"Saving state @ step {step} | {ckpt_dir} | {label}")

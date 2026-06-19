@@ -117,6 +117,36 @@ def trajectory_iterator_np(tfrecord_path, meta_path, traj_ids=None):
 
         traj_id += 1
         yield decoded
+#
+# def threaded_trajectory_iterator(
+#     tfrecord_path,
+#     meta_path,
+#     traj_ids=None,
+#     max_prefetch=4,
+# ):
+#     """
+#     Producer–consumer wrapper around trajectory_iterator_np.
+#
+#     Yields
+#     ------
+#     (dict | None, bool)
+#         (trajectory, is_new_epoch)
+#     """
+#
+#     q = queue.Queue(maxsize=max_prefetch)
+#
+#     def producer():
+#         for traj in trajectory_iterator_np(tfrecord_path, meta_path, traj_ids):
+#             q.put(traj)
+#         q.put(None)
+#
+#     threading.Thread(
+#         target=producer,
+#         daemon=True,
+#     ).start()
+#
+#     while True:
+#         yield q.get()
 
 def threaded_trajectory_iterator(
     tfrecord_path,
@@ -134,11 +164,12 @@ def threaded_trajectory_iterator(
     """
 
     q = queue.Queue(maxsize=max_prefetch)
+    END = object()
 
     def producer():
         for traj in trajectory_iterator_np(tfrecord_path, meta_path, traj_ids):
             q.put(traj)
-        q.put(None)
+        q.put(END)
 
     threading.Thread(
         target=producer,
@@ -146,5 +177,10 @@ def threaded_trajectory_iterator(
     ).start()
 
     while True:
-        yield q.get()
+        item = q.get()
+
+        if item is END:
+            return
+
+        yield item
 
