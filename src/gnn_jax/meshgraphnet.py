@@ -68,7 +68,8 @@ class MeshGraphNet(nn.Module):
 # Checkpointing helpers
 # -------------------------------------------------------------
 
-_checkpointer = ocp.StandardCheckpointer()
+# _checkpointer = ocp.StandardCheckpointer()
+_checkpointer = ocp.PyTreeCheckpointer()
 
 def save_checkpoint(step, params, opt_state, stats, epoch, rng, ckpt_dir: Path, label = None):
     state = {

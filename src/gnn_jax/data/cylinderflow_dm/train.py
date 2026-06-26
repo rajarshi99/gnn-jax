@@ -5,7 +5,7 @@ import optax
 from flax import linen as nn
 
 import jraph
-from gnn_jax.meshgraphnet import save_checkpoint, close_checkpointer
+from gnn_jax.meshgraphnet import save_checkpoint, close_checkpointer, load_checkpoint
 from gnn_jax.data.cylinderflow_dm.load import threaded_trajectory_iterator, NodeType
 from gnn_jax.data.cylinderflow_dm.trajectory import Trajectory
 
@@ -38,7 +38,7 @@ def create_variables(rng, model, max_tstep):
     else:
         return model.init(rng, 0.42, node_in, edge_in, senders, receivers)
 
-def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_ids=None):
+def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_ids=None, resume=False):
     seed = int(cfg_train.get("seed", 0))
     lr = float(cfg_train.get("learning_rate", 1e-4))
     steps = int(cfg_train.get("steps", 500))
@@ -126,19 +126,36 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
         )
         return mutated["stats"]
 
-    total_num_nodes_seen = 0
-    accumulate_stats_flag = True
-    steps_per_traj = 1
     log_f = open(log_path, "w")
     log_writer = csv.writer(log_f)
-    log_writer.writerow(["epoch", "traj_id", "step", "loss", "elapsed_time"])
-
-    epoch = 0
-    traj_id = -1
     init_traj_it = lambda: threaded_trajectory_iterator(train_path, meta_path, traj_ids=train_traj_ids)
     traj_it = init_traj_it()
+    traj_id = -1
+
+    if resume is False:
+        total_num_nodes_seen = 0
+        accumulate_stats_flag = True
+        steps_per_traj = 1
+        log_writer.writerow(["epoch", "traj_id", "step", "loss", "elapsed_time"])
+
+        start_step = 0
+        epoch = 0
+
+    else:
+        total_num_nodes_seen = 5_00_000
+        accumulate_stats_flag = False
+        steps_per_traj = 10
+
+        state = load_checkpoint(resume)
+        start_step = state["step"] + 1
+        params = state["params"]
+        opt_state = state["opt_state"]
+        stats = state["stats"]
+        epoch = state["epoch"]
+        rng = state["rng"]
+
     last_log_time = time.perf_counter()
-    for step in range(steps):
+    for step in range(steps - start_step):
         if step % steps_per_traj == 0:
             try:
                 traj = next(traj_it)
