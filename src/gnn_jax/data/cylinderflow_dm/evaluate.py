@@ -10,9 +10,12 @@ import csv
 import time
 import json
 
-def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=None, zeroE=False):
+def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=None, zeroE=False, model_path=None):
     ckpt_dir = Path(cfg_eval["ckpt_dir"])
-    state = load_checkpoint(ckpt_dir / "model_final")
+    if model_path is None:
+        state = load_checkpoint(ckpt_dir / "model_final")
+    else:
+        state = load_checkpoint(model_path)
     variables = {"params": state["params"], "stats": state["stats"]}
 
     with open(meta_path, "r") as f:

@@ -18,6 +18,17 @@ def setup_run(args):
     if args.mode == "train":
         if args.config is None:
             raise ValueError("--config required for training")
+
+        existing_ckpt_dir = cfg[expt].get("ckpt_dir", None)
+        if existing_ckpt_dir is not None and Path(existing_ckpt_dir).exists():
+            ckpt_dir = Path(existing_ckpt_dir)
+            model_dirs = [d for d in ckpt_dir.glob("model_*") if d.is_dir()]
+            if len(model_dirs) > 0:
+                last_model_dir = max(model_dirs, key=lambda d: int(d.name.split("_")[-1]))
+                cfg[expt]["resume"] = str(ckpt_dir / last_model_dir)
+                print(f"Training from {last_model_dir}")
+                return expt, cfg
+
         run_dir = Path(cfg[expt]["out_dir"] + time.strftime("_%m%d_%H%M"))
         run_dir.mkdir(parents=True)
         print(f"Created dir {run_dir}")
