@@ -72,6 +72,43 @@ class Normalizer(nn.Module):
         self.M2.value = M2_new
         self.std.value = std_new
 
+    def accumulate_std(self, x: jnp.ndarray):
+        """
+        CHECK THE LOGIC ONCE AGAIN
+        Accumulate statistics from data.
+
+        x: [..., feature_dim]
+        returns number of features accumulated
+        """
+        if x.shape[-1] != self.feature_dim:
+            raise ValueError("Feature dimension mismatch")
+
+        # flatten all leading dims
+        x_batch = x.reshape(-1, self.feature_dim)
+        n_batch = x_batch.shape[0]
+
+        # Calculate new count
+        count_new = self.count.value + n_batch
+
+        # Calculate new mean
+        mean_batch = jnp.mean(x_batch, axis=0)
+        delta = mean_batch - self.mean.value
+        mean_new = self.mean.value + delta*n_batch/count_new
+
+        # Calculate new M2
+        diff = x_batch - mean_batch
+        M2_batch = jnp.sum(diff*diff, axis=0)
+        M2_new = self.M2.value + M2_batch + delta*delta * self.count.value*n_batch/count_new
+
+        # Calculate new std
+        var = M2_new/count_new
+        std_new = jnp.sqrt(jnp.maximum(var,self.eps))
+
+        self.count.value = count_new
+        # self.mean.value = mean_new
+        self.M2.value = M2_new
+        self.std.value = std_new
+
     # ------------------------------------------------------------------
     # transforms
     # ------------------------------------------------------------------

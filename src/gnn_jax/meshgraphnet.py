@@ -23,6 +23,8 @@ class MeshGraphNet(nn.Module):
     node_out_dim: int
     dec: nn.Module
 
+    use_node_bias: bool = True
+
     def setup(self):
         self.node_norm = Normalizer(feature_dim=self.node_feat_dim, name="node_norm")
         self.edge_norm = Normalizer(feature_dim=self.edge_feat_dim, name="edge_norm")
@@ -58,11 +60,14 @@ class MeshGraphNet(nn.Module):
 
         return self.dec(h)
 
-    def accumulate_norms(self, node_in, edge_in, delta_v_gt):
-        self.node_norm.accumulate(node_in)
+    def accumulate_norms(self, node_in, edge_in, node_out):
+        if self.use_node_bias:
+            self.node_norm.accumulate(node_in)
+            self.out_data_norm.accumulate(node_out)
+        else:
+            self.node_norm.accumulate_std(node_in)
+            self.out_data_norm.accumulate_std(node_out)
         self.edge_norm.accumulate(edge_in)
-        self.out_data_norm.accumulate(delta_v_gt)
-
 
 # -------------------------------------------------------------
 # Checkpointing helpers

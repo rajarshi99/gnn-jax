@@ -21,6 +21,7 @@ class MLP(nn.Module):
     """
     layer_sizes: Sequence[int]
     activations: Sequence[Callable[[jnp.ndarray], jnp.ndarray]]
+    use_bias: bool = True
 
     @nn.compact
     def __call__(self, x:jnp.ndarray):
@@ -31,6 +32,6 @@ class MLP(nn.Module):
             activations = self.activations
 
         for act, lsize in zip(activations, self.layer_sizes):
-            x = act(nn.Dense(features=lsize)(x))
+            x = act(nn.Dense(features=lsize, use_bias=self.use_bias)(x))
 
         return x
