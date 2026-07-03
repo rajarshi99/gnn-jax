@@ -4,39 +4,26 @@ import yaml
 
 from scripts.plot_utils import *
 
-# from itertools import combinations
-
 out_dir = Path("output")
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--base", type=str, required=True)
-args = parser.parse_args()
-
-base_dir =  Path(args.base)
-label_fname = "label.yaml"
-train_fname = "train_logs.csv"
-
-rollout_desc = {
-        "eval"              :  "Test Trajectories",
-        "eval_zeroE"        :  "Test Trajectories with Zero Input",
-        "eval_custom"       :  "On Unseen R",
-        "eval_zeroE_custom" :  "On Unseen R with Zero Input",
-        }
-
 class Runs:
-    def __init__(self):
+    def __init__(self, base_dir, label_fname, train_fname, rollout_desc):
         self.run_paths = []
         self.info_dicts = []
 
-    def add(self, run_path, info_dict):
-        self.run_paths.append(Path(run_path))
-        self.info_dicts.append(info_dict)
-        print(f"Reading run dir {run_path}")
-        for k,v in info_dict.items():
-            if k in rollout_desc:
-                print(f" {k}: {rollout_desc[k]}")
-            else:
-                print(f" {k}: {v}")
+        for run_path in base_dir.iterdir():
+            label_path = run_path / label_fname
+            if label_path.exists():
+                with open(label_path, "r") as f:
+                    info_dict = yaml.safe_load(f)
+                self.run_paths.append(Path(run_path))
+                self.info_dicts.append(info_dict)
+                print(f"Reading run dir {run_path}")
+                for k,v in info_dict.items():
+                    if k in rollout_desc:
+                        print(f" {k}: {rollout_desc[k]}")
+                    else:
+                        print(f" {k}: {v}")
 
     def get_train_info(self):
         colors = []
@@ -56,15 +43,22 @@ class Runs:
         traj_paths = []
         for run_path, info_dict in zip(self.run_paths, self.info_dicts):
             if key in info_dict:
-                if info_dict[key] is True:
-                    color = info_dict["color"]
-                    label = info_dict["label"]
-                else:
+                if isinstance(info_dict[key], dict):
                     color = info_dict[key].get("color", "brown")
                     label = info_dict[key].get("label", "?")
+                    subdir = info_dict[key].get("subdir", key)
+                    print(f"{key}: is dict {color}, {label}, {subdir}")
+                elif info_dict[key] is True:
+                    color = info_dict["color"]
+                    label = info_dict["label"]
+                    subdir = key
+                    print(f"{key}: is True {color}, {label}, {subdir}")
+                else:
+                    print(f"** Expecting type dict or bool=True, found {type(info_dict[key])}, {run_path} **")
+                    continue
 
                 if t_skip_list is None:
-                    traj_path = list((run_path / key).glob("dt_*"))
+                    traj_path = list((run_path / subdir).glob("dt_*"))
                     if len(traj_path) > 1:
                         traj_paths.append(traj_path)
                         colors.append(color)
@@ -72,7 +66,7 @@ class Runs:
 
                 else:
                     for t_skip in t_skip_list:
-                        traj_path = run_path / key / f"dt_{t_skip:02d}"
+                        traj_path = run_path / subdir / f"dt_{t_skip:02d}"
                         if traj_path.exists():
                             colors.append(color)
                             if t_skip == 1:
@@ -84,14 +78,25 @@ class Runs:
                             traj_paths.append(traj_path)
         return colors, labels, traj_paths
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--base", type=str, required=True)
+args = parser.parse_args()
+
+base_dir =  Path(args.base)
+label_fname = "label.yaml"
+train_fname = "train_logs.csv"
+
+rollout_desc = {
+        # "eval"              :  "Test Trajectories",
+        # "eval_zeroE"        :  "Test Trajectories with Zero Input",
+        # "eval_custom"       :  "On Unseen R",
+        # "eval_zeroE_custom" :  "On Unseen R with Zero Input",
+        "eval_lim"          :  "Test Trajectories (Limited Training)",
+        "eval_zeroE_lim"    :  "Test Trajectories with Zero Input (Limited Training)",
+        }
+
 # Load run info
-runs = Runs()
-for run_path in base_dir.iterdir():
-    label_path = run_path / label_fname
-    if label_path.exists():
-        with open(label_path, "r") as f:
-            info_dict = yaml.safe_load(f)
-        runs.add(run_path, info_dict)
+runs = Runs(base_dir, label_fname, train_fname, rollout_desc)
 
 # Plot loss values normal and smooth
 colors, labels, styles, train_paths = runs.get_train_info()
