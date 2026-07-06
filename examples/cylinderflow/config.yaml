@@ -12,21 +12,21 @@ model:
 
 base:
   learning_rate: 1e-4
-  out_dir: /media/user/HDD-UT/rajarshi_data/results/base
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylFlow/base
   seed: 42
   steps: 2000000
   steps_per_log: 100
 
 asymm:
   learning_rate: 1e-4
-  out_dir: /media/user/HDD-UT/rajarshi_data/results/amp
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylFlow/amp
   seed: 42
   steps: 2000000
   steps_per_log: 100
 
 tau:
   learning_rate: 1e-4
-  out_dir: /media/user/HDD-UT/rajarshi_data/results/lti
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylFlow/lti
   seed: 42
   steps: 2000000
   steps_per_log: 100
@@ -35,7 +35,7 @@ tau:
 
 asymm_tau:
   learning_rate: 1e-4
-  out_dir: /media/user/HDD-UT/rajarshi_data/results/amp_lti
+  out_dir: /media/user/HDD-UT/rajarshi_data/cylFlow/amp_lti
   seed: 42
   steps: 2000000
   steps_per_log: 100
