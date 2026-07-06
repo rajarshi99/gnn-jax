@@ -1,10 +1,6 @@
 import trimesh
 import pyvista as pv
 
-import jax
-import jax.numpy as jnp
-import jraph
-
 import numpy as np
 from scipy.spatial import cKDTree
 from pathlib import Path
@@ -12,6 +8,7 @@ import json
 
 
 def get_io(stl_path, vtp_path):
+    io_dict = {}
 
     # Use mesh to make graph
     mesh = trimesh.load(stl_path)
@@ -23,10 +20,10 @@ def get_io(stl_path, vtp_path):
     vertices = mesh.vertices
     mesh.fix_normals()
 
-    node_feats = np.concatenate(
-            [vertices, mesh.vertex_normals],
-            axis = -1
-            )
+    io_dict["node_in"] = {
+                "vertices": vertices,
+                "normals" : mesh.vertex_normals
+                }
 
     faces = mesh.faces
     i = faces[:, 0]
@@ -35,19 +32,23 @@ def get_io(stl_path, vtp_path):
     senders = np.concatenate([i, j, k, j, k, i])
     receivers = np.concatenate([j, k, i, i, j, k])
 
-    rel = vertices[receivers] - vertices[senders]
-    dist = np.linalg.norm(rel, axis=-1, keepdims=True)
-    edge_feats = np.concatenate([rel, dist], axis=-1)
+    rel_pos = vertices[receivers] - vertices[senders]
+    distance = np.linalg.norm(rel, axis=-1, keepdims=True)
+    io_dict["edge_in"] = {
+            "rel_pos" : rel_pos,
+            "distance": distance
+            }
 
-    graph = jraph.GraphsTuple(
-        nodes=jnp.array(node_feats),
-        edges=jnp.array(edge_feats),
-        senders=jnp.array(senders),
-        receivers=jnp.array(receivers),
-        n_node=jnp.array([node_feats.shape[0]]),
-        n_edge=jnp.array([edge_feats.shape[0]]),
-        globals=None,
-    )
+    # Put somewhere else
+    # graph = jraph.GraphsTuple(
+    #     nodes=jnp.array(node_feats),
+    #     edges=jnp.array(edge_feats),
+    #     senders=jnp.array(senders),
+    #     receivers=jnp.array(receivers),
+    #     n_node=jnp.array([node_feats.shape[0]]),
+    #     n_edge=jnp.array([edge_feats.shape[0]]),
+    #     globals=None,
+    # )
 
     # Use data to make target
     data = pv.read(vtp_path)
@@ -64,17 +65,53 @@ def get_io(stl_path, vtp_path):
     shear_stress = data.point_data["wallShearStressMeanTrim"]
     shear_stress_out = np.sum(weights[...,None] * shear_stress[idx], axis=1, keepdims=True)
 
-    target_node_out = np.concatenate(
-            [Cp_out[:,None], shear_stress_out],
-            axis=-1
-            )
+    io_dict["node_out"] = {
+            "Cp": Cp_out,
+            "shear_stree": shear_stress_out
+            }
 
-    return graph, target_node_out
+    return io_dict
+
+class AccumulateStats:
+    def __init__(self):
+        self.stats = {}
+
+    def push_sample(self, sample):
+        for k,v in sample.items():
+            if k in self.stats:
+                self.stats[k]["cnt"].append(v.shape[0])
+                self.stats[k]["avg"].append(np.mean(v, axis=0))
+                self.stats[k]["var"].append(np.var(v, axis=0))
+            else:
+                self.stats[k] = {
+                        "cnt" : [v.shape[0]],
+                        "avg" : [np.mean(v, axis=0)],
+                        "var" : [np.var(v, axis=0)]
+                        }
+        return v.shape[0]
+
+    def get_avg_std(self):
+        result = {}
+        for name,stats in self.stats.items():
+            cnt = np.array(stats["cnt"])
+            avg = np.array(stats["avg"])
+            var = np.array(stats["var"])
+
+            glob_avg = np.sum(avg*cnt[:,None], axis=0) / np.sum(cnt)
+            glob_var = np.sum(cnt[:,None] * (var + (avg - glob_avg)**2), axis=0) / np.sum(cnt)
+            result[name] = {
+                    "avg": glob_avg,
+                    "std": np.sqrt(glob_var)
+                    }
+
+        return result
+
+
 
 class DrivAerIterator:
-    def __init__(self, rng, base_path, stats_path, mode="train"):
-        self.base_path = Path(base_path)
-        stats_path = Path(stats_path)
+    def __init__(self, rng, cfg_data, mode="train"):
+        self.base_path = Path(cfg_data["dir"])
+        stats_path = Path(cfg_data["stats"])
 
         run_dirs = np.array([p for p in self.base_path.iterdir() if p.is_dir()])
 
@@ -84,6 +121,9 @@ class DrivAerIterator:
             split = stats["split"]
             self.max_nodes = stats["max_nodes"]
             self.max_edges = stats["max_edges"]
+            self.node_in_stats = stats["node_in"]
+            self.edge_in_stats = stats["edge_in"]
+            self.node_out_stats = stats["node_out"]
 
         else:
             print(f"Creating dataset split as {stats_path} not found")
@@ -98,30 +138,57 @@ class DrivAerIterator:
             val_dirs = list(shuffled[N_train:N_train+N_val])
             test_dirs = list(shuffled[N_train+N_val:])
 
-            split = {
-                    "train": train_dirs,
-                    "val": val_dirs,
-                    "test": test_dirs
-                    }
-            print(split)
-
+            bad_id = []
+            good_id = []
             self.max_nodes = 0
             self.max_edges = 0
-            for run_dir in train_dirs:
+            node_in = AccumulateStats()
+            edge_in = AccumulateStats()
+            node_out = AccumulateStats()
+
+            for i,run_dir in enumerate(train_dirs):
                 run_path = self.base_path / run_dir
                 stl_path = list(run_path.glob("drivaer_*_single_solid.stl"))[0]
                 vtp_path = list(run_path.glob("boundary_*.vtp"))[0]
-                graph, target_node_out = get_io(stl_path, vtp_path)
-                if self.max_nodes < graph.n_node[0]:
-                    self.max_nodes = graph.n_node[0]
-                if self.max_edges < graph.n_edge[0]:
-                    self.max_nodes = graph.n_edge[0]
-                print(f"{run_dir} | num_nodes {graph.n_node[0]} | num_edges {graph.n_edge[0]}")
+                try:
+                    io_dict = get_io(stl_path, vtp_path)
+                    n_node = node_in.push_sample(io_dict["node_in"])
+                    n_edge = edge_in.push_sample(io_dict["edge_in"])
+                    n_node = node_out.push_sample(io_dict["node_out"])
+
+                    if self.max_nodes < n_node:
+                        self.max_nodes = n_node
+                    if self.max_edges < n_edge:
+                        self.max_nodes = n_edge
+
+                    print(f"Train ID: {i}")
+                    good_id.append(i)
+                except:
+                    print(f"BAD run_dir {run_dir}")
+                    bad_id.append(i)
+                    continue
             
+            train_dirs = [train_dirs[i] for i in good_id]
+            bad_dirs = [train_dirs[i] for i in bad_id]
+            split = {
+                    "train" : train_dirs,
+                    "val"   : val_dirs,
+                    "test"  : test_dirs,
+                    "bad"   : bad_dirs
+                    }
+            print(split)
+
+            self.node_in_stats = node_in.get_avg_std()
+            self.edge_in_stats = edge_in.get_avg_std()
+            self.node_out_stats = node_out.get_avg_std()
+
             stats = {
-                    "split": split,
+                    "split"    : split,
                     "max_nodes": self.max_nodes,
                     "max_edges": self.max_edges,
+                    "node_in"  : self.node_in_stats,
+                    "edge_in"  : self.edge_in_stats,
+                    "node_out" : self.node_out_stats
                     }
 
             with open(stats_path, "w") as f:
