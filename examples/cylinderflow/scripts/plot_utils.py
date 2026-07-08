@@ -170,8 +170,11 @@ def plot_rollout_stats(colors, labels, traj_paths, out_fname, mask_fn):
 def plot_acc_cost(colors, labels, traj_paths, out_fname):
     for c, lab, t_dirs in zip(colors, labels, traj_paths):
         cost_list = []
-        avg_err_list = []
-        std_err_list = []
+        # avg_err_list = []
+        # std_err_list = []
+        lo_list = []
+        q50_list = []
+        up_list = []
         for t_dir in t_dirs:
             n_tot = 0
             n_fail = 0
@@ -187,11 +190,18 @@ def plot_acc_cost(colors, labels, traj_paths, out_fname):
             if n_fail > 0:
                 continue
             cost_list.append(t.shape[0])
-            avg_err_list.append(np.mean(err_list))
-            std_err_list.append(np.std(err_list))
+            q25, q50, q75 = np.percentile(err_list, [25, 50, 75])
+            lo_list.append(q50 - q25)
+            q50_list.append(q50)
+            up_list.append(q75 - q50)
+            # avg_err_list.append(np.mean(err_list))
+            # std_err_list.append(np.std(err_list))
 
-        plt.errorbar(cost_list, avg_err_list, yerr=std_err_list, fmt="o", capsize=4, color=c, label=lab)
-        plt.errorbar(cost_list, avg_err_list, linestyle="--", color=c)
+        # plt.errorbar(cost_list, avg_err_list, yerr=std_err_list, fmt="o", capsize=4, color=c, label=lab)
+        # plt.errorbar(cost_list, avg_err_list, linestyle="--", color=c)
+
+        plt.errorbar(cost_list, q50_list, yerr=[lo_list, up_list], fmt="o", capsize=4, color=c, label=lab)
+        plt.plot(cost_list, q50_list, color=c, linestyle="--")
 
         # if len(cost_list) > cost_list_len:
         #     longest_cost_list = cost_list
