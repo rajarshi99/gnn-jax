@@ -25,15 +25,17 @@ class NodeUpdate(nn.Module):
     """
     latent_dim: int
     num_hidden_layers: int
+    use_bias: bool = True
 
     @nn.compact
     def __call__(self, h, agg):
         x = jnp.concatenate([h, agg], axis=-1)
         dh = MLP(
             [self.latent_dim]*self.num_hidden_layers + [h.shape[-1]],
-            [nn.relu]*self.num_hidden_layers
+            [nn.relu]*self.num_hidden_layers,
+            use_bias = self.use_bias
         )(x)
-        dh = nn.LayerNorm()(dh) # Layer Norm
+        dh = nn.LayerNorm(use_bias=self.use_bias)(dh) # Layer Norm
         return h + dh # Residual connection
 
 class MessageCompute(nn.Module):
@@ -70,11 +72,6 @@ def get_model(cfg, asymm_flag, tau_flag, expt_name):
     mp_steps = int(cfg["model"].get("message_passing_steps", 8))
 
     # MGN Defaults
-    node_update_factory=lambda l: NodeUpdate(
-            latent_dim=latent_dim,
-            num_hidden_layers=1,
-            name=f"node_{l}"
-            )
     edge_update_factory=lambda l: EdgeUpdate()
     msg_compute_factory=lambda l: MessageCompute(
             latent_dim=latent_dim,
@@ -82,7 +79,6 @@ def get_model(cfg, asymm_flag, tau_flag, expt_name):
             name=f"msg_{l}"
             )
     use_node_bias = True
-
 
     if asymm_flag:
         edge_update_factory = edge_update_factory=lambda l: asymm.EdgeUpdate()
@@ -97,6 +93,12 @@ def get_model(cfg, asymm_flag, tau_flag, expt_name):
     node_enc=MLP([latent_dim]*2, [nn.relu]*1, use_bias=use_node_bias, name="node_enc")
     edge_enc=MLP([latent_dim]*2, [nn.relu]*1, name="edge_enc")
     dec=MLP([latent_dim]*1 + [2], [nn.relu]*1, use_bias=use_node_bias, name="dec")
+    node_update_factory=lambda l: NodeUpdate(
+            latent_dim=latent_dim,
+            num_hidden_layers=1,
+            use_bias=use_node_bias,
+            name=f"node_{l}"
+            )
 
     if tau_flag:
         node_update_factory = lambda l: tau.NodeUpdate(
