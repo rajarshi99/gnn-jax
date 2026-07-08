@@ -1,0 +1,14 @@
+dataset:
+  name: DrivAerMl
+  dir: /home/rajarshi/DrivAerML_trial/drivaer_data
+  stats: stats.json
+  parts: /home/rajarshi/DrivAerML_trial/drivaer_parts
+
+model:
+  latent_dim: 128
+  message_passing_steps: 15
+
+base:
+  seed: 69
+  steps: 500
+  log: train_logs.csv
