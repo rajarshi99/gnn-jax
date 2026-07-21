@@ -146,10 +146,16 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
         accumulate_stats_flag = False
         steps_per_traj = 10
 
+        fresh_opt_state = opt_state
         state = load_checkpoint(resume)
         start_step = state["step"] + 1
         params = state["params"]
-        opt_state = state["opt_state"]
+        loaded_opt_state = state["opt_state"]
+        opt_state = tuple(
+                type(fresh)(**loaded)
+                for fresh, loaded in zip(fresh_opt_state, loaded_opt_state)
+                )
+        print([type(tt) for tt in opt_state])
         stats = state["stats"]
         epoch = state["epoch"]
         rng = state["rng"]
