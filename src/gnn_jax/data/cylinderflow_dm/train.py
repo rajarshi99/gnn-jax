@@ -126,8 +126,6 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
         )
         return mutated["stats"]
 
-    log_f = open(log_path, "w")
-    log_writer = csv.writer(log_f)
     init_traj_it = lambda: threaded_trajectory_iterator(train_path, meta_path, traj_ids=train_traj_ids)
     traj_it = init_traj_it()
     traj_id = -1
@@ -136,12 +134,17 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
         total_num_nodes_seen = 0
         accumulate_stats_flag = True
         steps_per_traj = 1
+        log_f = open(log_path, "w")
+        log_writer = csv.writer(log_f)
         log_writer.writerow(["epoch", "traj_id", "step", "loss", "elapsed_time"])
 
         start_step = 0
         epoch = 0
 
     else:
+        log_f = open(log_path, "a")
+        log_writer = csv.writer(log_f)
+
         total_num_nodes_seen = 5_00_000
         accumulate_stats_flag = False
         steps_per_traj = 10
@@ -157,7 +160,7 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
                 )
         print([type(tt) for tt in opt_state])
         stats = state["stats"]
-        epoch = state["epoch"]
+        epoch = state["epoch"] + 1
         rng = state["rng"]
 
     last_log_time = time.perf_counter()
