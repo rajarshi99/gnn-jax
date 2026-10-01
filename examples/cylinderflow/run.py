@@ -44,10 +44,8 @@ def main():
 
     if args.tau:
         max_tstep = int(cfg[expt].get("max_tstep", 16))
-        dt_step = args.dt_step
     else:
         max_tstep = None
-        dt_step = None
 
     if args.custom:
         with open(cfg["custom"]["split_path"], "r") as f:
@@ -58,15 +56,19 @@ def main():
             train_traj_ids = split["train_traj_ids"]
             train(model, cfg[expt],
                   train_path, meta_path, train_traj_ids=train_traj_ids,
-                  max_tstep=max_tstep,
+                  max_tstep=max_tstep, dt_step=args.dt_step,
                   resume=cfg[expt].get("resume", False))
         else:
             train(model, cfg[expt],
                   train_path, meta_path,
-                  max_tstep=max_tstep,
+                  max_tstep=max_tstep, dt_step=args.dt_step,
                   resume=cfg[expt].get("resume", False))
 
     elif args.mode == "eval":
+        if not args.tau and "dt_step" in cfg[expt]:
+            print("Since not LTI: Taking dt_step from config file")
+            dt_step = cfg[expt]["dt_step"]
+
         eval_dir = "eval"
         if args.zeroE:
             eval_dir += "_zeroE"

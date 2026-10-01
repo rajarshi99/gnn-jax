@@ -34,6 +34,7 @@ def setup_run(args):
         print(f"Created dir {run_dir}")
         cfg[expt]["ckpt_dir"] = str(run_dir)
         cfg[expt]["log"] = str(run_dir / "train_logs.csv")
+        cfg[expt]["dt_step"] = args.dt_step
         out_yaml = Path(run_dir) / "config.yaml"
         with open(out_yaml, "w") as  f:
             yaml.dump(cfg, f)

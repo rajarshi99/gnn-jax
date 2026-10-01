@@ -38,7 +38,7 @@ def create_variables(rng, model, max_tstep):
     else:
         return model.init(rng, 0.42, node_in, edge_in, senders, receivers)
 
-def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_ids=None, resume=False):
+def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_ids=None, resume=False, dt_step=1):
     seed = int(cfg_train.get("seed", 0))
     lr = float(cfg_train.get("learning_rate", 1e-4))
     steps = int(cfg_train.get("steps", 500))
@@ -201,7 +201,7 @@ def train(model, cfg_train, train_path, meta_path, max_tstep=None, train_traj_id
             edge_padding_mask = jraph.get_edge_padding_mask(graph) # shape: (E_pad,)
 
         # --- Train by sampling (t_curr -> t_next) from the trajectory ---
-        rng, n_tstep, node_in, target_delta_v = traj.get_random_data_in_out(rng, max_tstep)
+        rng, n_tstep, node_in, target_delta_v = traj.get_random_data_in_out(rng, max_tstep, n_tstep=dt_step)
 
         if accumulate_stats_flag:
             stats = accumulate_stats(stats, node_in, traj.edge_in, target_delta_v)

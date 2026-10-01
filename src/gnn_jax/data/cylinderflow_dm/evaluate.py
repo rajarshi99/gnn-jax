@@ -10,7 +10,7 @@ import csv
 import time
 import json
 
-def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=None, zeroE=False, model_path=None):
+def evaluate(model, cfg_eval, data_path, meta_path, dt_step=1, test_traj_ids=None, zeroE=False, model_path=None):
     ckpt_dir = Path(cfg_eval["ckpt_dir"])
     if model_path is None:
         state = load_checkpoint(ckpt_dir / "model_final")
@@ -22,12 +22,9 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
         meta = json.load(f)
     dt_min = float(meta["dt"])
 
-    if dt_step is None:
-        t_skip = 1
-        dt_phy = dt_min
-    else:
-        t_skip = dt_step
-        dt_phy = dt_min * dt_step
+    tau_flag = "max_tstep" in cfg_eval:
+    t_skip = dt_step
+    dt_phy = dt_min * dt_step
 
     eval_dir = cfg_eval.get("eval_dir")
     if eval_dir is None:
@@ -38,7 +35,7 @@ def evaluate(model, cfg_eval, data_path, meta_path, dt_step=None, test_traj_ids=
     eval_dir.mkdir(parents=True, exist_ok=True)
 
     def rollout(v0, node_type_oh, edge_in, senders, receivers, mask, num_steps):
-        if dt_step is None:
+        if tau_flag:
             def step_fn(v_t,_):
                 node_in = jnp.concatenate([v_t, node_type_oh], axis=-1)
                 pred = model.apply(

@@ -48,11 +48,9 @@ class Trajectory:
             globals=None,
         )
 
-    def get_random_data_in_out(self, rng, max_tstep, add_noise=True):
-        # First decide n_tstep
-        if max_tstep is None:
-            n_tstep = 1
-        else:
+    def get_random_data_in_out(self, rng, max_tstep, add_noise=True, n_tstep=1):
+        if max_tstep is not None:
+            # LTI with time discretization chosen randomly between delta_t to max_tstep*delta_t
             rng, sub = jax.random.split(rng)
             n_tstep = int(jax.random.randint(sub, (), 1, max_tstep+1))
 
