@@ -3,6 +3,7 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from pandas.core.arrays import masked
 
 mpl.rcParams.update({
     # === Figure ===
@@ -167,7 +168,7 @@ def plot_rollout_stats(colors, labels, traj_paths, out_fname, mask_fn):
     plt.savefig(out_fname)
     plt.close()
 
-def plot_acc_cost(colors, labels, traj_paths, out_fname):
+def plot_acc_cost(colors, labels, traj_paths, out_fname, mask_fn=None):
     for c, lab, t_dirs in zip(colors, labels, traj_paths):
         cost_list = []
         # avg_err_list = []
@@ -182,14 +183,17 @@ def plot_acc_cost(colors, labels, traj_paths, out_fname):
             for i, traj_f in enumerate(t_dir.glob("traj_*.npz")):
                 t, err = get_rollout_t_vs_err(traj_f)
                 if np.all(np.isfinite(err)):
-                    err_list.append(err[-1])
+                    err_list.append(err[-1 if mask_fn is None else mask_fn(t)])
                 else:
                     n_fail += 1
                 n_tot += 1
             print("\t", lab, t_dir, "n_tot:", n_tot, "| n_fail:", n_fail)
             if n_fail > 0:
                 continue
-            cost_list.append(t.shape[0])
+            if mask_fn is None:
+                cost_list.append(t.shape[0])
+            else:
+                cost_list.append(t[mask_fn(t)].shape[0])
             q25, q50, q75 = np.percentile(err_list, [25, 50, 75])
             lo_list.append(q50 - q25)
             q50_list.append(q50)
@@ -208,7 +212,10 @@ def plot_acc_cost(colors, labels, traj_paths, out_fname):
 
     plt.xlabel("Cost: number of rollout iterations")
     # plt.xscale("log")
-    plt.ylabel("End RMSE")
+    if mask_fn is None:
+        plt.ylabel("End RMSE")
+    else:
+        plt.ylabel("Time averaged RMSE")
     plt.yscale("log")
     plt.legend()
 

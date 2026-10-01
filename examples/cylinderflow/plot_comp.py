@@ -69,12 +69,15 @@ class Runs:
                         traj_path = run_path / subdir / f"dt_{t_skip:02d}"
                         if traj_path.exists():
                             colors.append(color)
-                            if t_skip == 1:
-                                labels.append(label)
-                            else:
-                                labels.append(
-                                        label + rf" $\tau={t_skip}\delta t$"
-                                        )
+                            # if t_skip == 1:
+                            #     labels.append(label)
+                            # else:
+                            #     labels.append(
+                            #             label + rf" $\tau={t_skip}\delta t$"
+                            #             )
+                            labels.append(
+                                    label + rf" $\tau={t_skip}\delta t$"
+                                    )
                             traj_paths.append(traj_path)
         return colors, labels, traj_paths
 
@@ -87,8 +90,8 @@ label_fname = "label.yaml"
 train_fname = "train_logs.csv"
 
 rollout_desc = {
-        # "eval"              :  "Test Trajectories",
-        # "eval_zeroE"        :  "Test Trajectories with Zero Input",
+        "eval"              :  "Test Trajectories",
+        "eval_zeroE"        :  "Test Trajectories with Zero Input",
         # "eval_custom"       :  "On Unseen R",
         # "eval_zeroE_custom" :  "On Unseen R with Zero Input",
         "eval_lim"          :  "Test Trajectories (Limited Training)",
@@ -106,11 +109,11 @@ plot_loss(colors, labels, styles, train_paths, out_dir / "loss_smooth.pdf", alph
 # Get statistics over all rollouts
 for key in rollout_desc:
     print(f"Begin rollout {key}")
-    colors, labels, traj_paths = runs.get_rollout_info(key, [1, 4, 8, 10])
-    plot_rollout_stats(colors, labels, traj_paths, out_dir / f"{key}_stats_beg.pdf", lambda t: (t < 1))
-    plot_rollout_stats(colors, labels, traj_paths, out_dir / f"{key}_stats_mid.pdf", lambda t: (2.5 < t) & (t < 3.5))
-    plot_rollout_stats(colors, labels, traj_paths, out_dir / f"{key}_stats_end.pdf", lambda t: (t > 5))
+    colors, labels, traj_paths = runs.get_rollout_info(key, list(range(1,11)))
+    plot_rollout_stats(colors, labels, traj_paths, out_dir / f"{key}_stats_beg.pdf", lambda t: (t > 1-1e-5))
+    # plot_rollout_stats(colors, labels, traj_paths, out_dir / f"{key}_stats_mid.pdf", lambda t: (1.0 < t) & (t < 1.5))
+    # plot_rollout_stats(colors, labels, traj_paths, out_dir / f"{key}_stats_end.pdf", lambda t: (t > 5))
 
-    colors, labels, traj_paths = runs.get_rollout_info(key)
-    plot_acc_cost(colors, labels, traj_paths, out_dir / f"{key}_acc_cost.pdf")
+    # colors, labels, traj_paths = runs.get_rollout_info(key)
+    # plot_acc_cost(colors, labels, traj_paths, out_dir / f"{key}_acc_cost.pdf", lambda t:  (t > (1-1e-5)), "RMSE(t~1)")
     print("_"*80)
